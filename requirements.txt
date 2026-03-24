@@ -1,0 +1,19 @@
+# FS Racing RL - Dependências
+# Core
+numpy>=1.24
+scipy>=1.10
+torch>=2.0
+gymnasium>=0.29
+
+# Visualização
+pygame>=2.5
+
+# Treino (opcional - para modo sb3)
+stable-baselines3[extra]>=2.1
+
+# Logging
+tensorboard>=2.14
+
+# Utilitários
+pyyaml>=6.0
+matplotlib>=3.7
