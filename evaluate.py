@@ -54,7 +54,10 @@ def evaluate_custom(args):
             f"Reward: {total_reward:.1f} | "
             f"Steps: {info['step']} | "
             f"Progress: {info['total_progress']:.1f}m | "
-            f"Laps: {info['laps_completed']}"
+            f"Laps: {info['laps_completed']} | "
+            f"Cones: {info['cones_hit']} (B:{info['cones_hit_blue']} "
+            f"Y:{info['cones_hit_yellow']} O:{info['cones_hit_orange']}) | "
+            f"TimePen: +{info['time_penalty']:.1f}s"
         )
 
     env.close()
@@ -98,7 +101,10 @@ def evaluate_sb3(args):
             f"Reward: {total_reward:.1f} | "
             f"Steps: {info['step']} | "
             f"Progress: {info['total_progress']:.1f}m | "
-            f"Laps: {info['laps_completed']}"
+            f"Laps: {info['laps_completed']} | "
+            f"Cones: {info['cones_hit']} (B:{info['cones_hit_blue']} "
+            f"Y:{info['cones_hit_yellow']} O:{info['cones_hit_orange']}) | "
+            f"TimePen: +{info['time_penalty']:.1f}s"
         )
 
     env.close()
@@ -141,7 +147,9 @@ def evaluate_random(args):
             f"Ep {ep+1}/{args.n_episodes} | "
             f"Reward: {total_reward:.1f} | "
             f"Steps: {step} | "
-            f"Progress: {info['total_progress']:.1f}m"
+            f"Progress: {info['total_progress']:.1f}m | "
+            f"Cones: {info['cones_hit']} | "
+            f"TimePen: +{info['time_penalty']:.1f}s"
         )
 
     env.close()

@@ -1,35 +1,109 @@
-# AR - Aprendizagem por Reforço 🏎️
+# Navegação Autónoma na Formula Student: Uma Abordagem Computacional Baseada em Aprendizagem por Reforço
 
-Projeto de Reinforcement Learning aplicado a condução autónoma Formula Student Driverless.
+**UC:** Aprendizagem por Reforço — Mestrado em Engenharia Informática, Universidade do Minho, 2025/26
 
-**Curso:** Sensoriação e Ambiente (SA2026) — Mestrado em IA, Universidade do Minho
+**Grupo 1:**
+| Nº | Nome |
+|---------|------|
+| PG60390 | Luís Miguel Pereira Silva |
+| PG59908 | Pedro Miguel Soares de Albergaria Urbano dos Reis |
 
-## Projeto: FS Racing RL
+---
 
-Agente de RL (SAC / PPO) que aprende a conduzir um carro de Formula Student numa pista delimitada por cones azuis (esquerda) e amarelos (direita).
+## Descrição
 
-### Componentes principais
+Agente de Reinforcement Learning que aprende a conduzir um carro de Formula Student Driverless numa pista delimitada por cones, seguindo as regras oficiais da competição FS-AI. O ambiente de simulação implementa penalizações realistas: cones derrubados aplicam penalizações de tempo (+2s cada), o carro pode ultrapassar os limites da pista (com penalizações graduais), e o episódio só termina em situações de DOO (*Did Not Operate*) — como demasiados cones derrubados ou desvio extremo do percurso.
 
-- **Ambiente 2D** com modelo cinemático de bicicleta e cones procedurais
-- **Observação** de 20 dimensões (ego state + cones + boundary info)
-- **SAC** (Soft Actor-Critic) como algoritmo principal, **PPO** como baseline
-- **Domain randomization** para robustez (massa, atrito, ruído sensorial)
-- **Visualização PyGame** em tempo real
+### Regras FS-AI implementadas
 
-### Quick Start
+- **Cones azuis** (fronteira esquerda) e **amarelos** (fronteira direita), **laranja** no start/finish
+- Cones derrubados = **penalização de 2s** por cone (não terminam o episódio)
+- Cones laranja = penalidade agravada (4s)
+- **DOO** (terminação) apenas se: ≥10 cones derrubados, off-course >5m, ou off-course >2s consecutivos
+- Cones derrubados são **removidos** da perceção do agente (simulando remoção física)
 
-```bash
-cd fs_racing_rl
-pip install -r requirements.txt
-python evaluate.py --random          # testar ambiente
-python train.py --mode custom --total-steps 500000  # treinar SAC
+## Arquitetura
+
+```
+AR/
+├── agent/                  # Implementação do agente RL
+│   ├── sac.py              # Soft Actor-Critic (custom, PyTorch)
+│   ├── networks.py         # Redes Actor-Critic (Gaussian Actor + Twin Q)
+│   └── replay_buffer.py    # Replay buffer circular
+├── env/                    # Ambiente de simulação Gymnasium
+│   ├── racing_env.py       # Ambiente principal (FSRacingEnv)
+│   ├── car_model.py        # Modelo cinemático de bicicleta
+│   ├── track_generator.py  # Gerador procedural de pistas
+│   ├── cone_sensor.py      # Simulação de sensores (LIDAR/câmara)
+│   └── renderer.py         # Visualização PyGame
+├── config/                 # Ficheiros de configuração
+│   └── default.yaml        # Parâmetros por defeito
+├── docs/                   # Documentação adicional
+│   └── pacsim_setup.md     # Notas de setup do PacSim (ROS 2)
+├── train.py                # Script de treino (SAC custom + SB3)
+├── evaluate.py             # Script de avaliação e visualização
+└── requirements.txt        # Dependências Python
 ```
 
-Ver [instal.md](instal.md) para instruções detalhadas.
+## Componentes principais
+
+- **Ambiente 2D** (`FSRacingEnv`) — modelo cinemático de bicicleta, pistas procedurais fechadas, cones com cores FS-AI, sistema de penalizações realista
+- **Observação** — vetor de 20 dimensões (estado do veículo + 3 cones azuis/amarelos mais próximos + distância às fronteiras + erro de heading)
+- **SAC** (Soft Actor-Critic) como algoritmo principal — adequado para espaço de ações contínuo (steering + throttle)
+- **PPO** como baseline de comparação via Stable-Baselines3
+- **Domain randomization** — variação de massa, atrito e ruído sensorial para robustez
+
+## Instalação
+
+```bash
+git clone https://github.com/pedroreis2468/AR.git
+cd AR
+pip install -r requirements.txt
+```
+
+### Dependências principais
+- Python ≥ 3.10
+- PyTorch ≥ 2.0
+- Gymnasium ≥ 0.29
+- PyGame ≥ 2.5
+- Stable-Baselines3 ≥ 2.1 (opcional, para modo SB3)
+
+## Utilização
+
+### Testar o ambiente (agente aleatório)
+```bash
+python evaluate.py --random
+```
+
+### Treinar o agente
+```bash
+# SAC custom (implementação educativa)
+python train.py --mode custom --total-steps 500000
+
+# SB3 SAC (produção)
+python train.py --mode sb3 --algo sac --total-steps 1000000
+
+# SB3 PPO (baseline)
+python train.py --mode sb3 --algo ppo --total-steps 1000000
+```
+
+### Avaliar modelo treinado
+```bash
+# Modelo SAC custom
+python evaluate.py --model runs/<run_dir>/best_model.pt --mode custom
+
+# Modelo SB3
+python evaluate.py --model runs/<run_dir>/final_model.zip --mode sb3
+```
+
+### Monitorizar treino
+```bash
+tensorboard --logdir runs/
+```
 
 ## Referências
 
-- Sutton & Barto (2020) — *Reinforcement Learning: An Introduction*
-- Balaji et al. (2019) — *DeepRacer: Autonomous Racing Platform* ([arXiv](https://arxiv.org/pdf/1905.05150))
-- Ulrich & Wehrli (2024) — *End-to-End Deep RL for Autonomous Racing Dynamics* ([ZHAW](https://www.zhaw.ch/storage/engineering/institute-zentren/cai/studentische_arbeiten/Spring_2024/BA_FS24_Fabian_Ulrich_Tobias_Wehrli_End-to-End_Deep_Reinforcement_Learning_for_Autonomous_Racing_Dynamics.pdf))
-- Haarnoja et al. (2018) — *Soft Actor-Critic Algorithms and Applications*
+- Kabzan, J. et al. (2019). [AMZ Driverless: The Full Autonomous Racing System](https://arxiv.org/abs/1905.05150). *Journal of Field Robotics*.
+- Sutton, R. S., & Barto, A. G. (2018). *Reinforcement Learning: An Introduction* (2nd ed.). MIT Press.
+- Ulrich, F., & Wehrli, T. (2024). [End-to-End Deep Reinforcement Learning for Autonomous Racing Dynamics](https://www.zhaw.ch/storage/engineering/institute-zentren/cai/studentische_arbeiten/Spring_2024/BA_FS24_Fabian_Ulrich_Tobias_Wehrli_End-to-End_Deep_Reinforcement_Learning_for_Autonomous_Racing_Dynamics.pdf). ZHAW.
+- Haarnoja, T. et al. (2018). [Soft Actor-Critic Algorithms and Applications](https://arxiv.org/abs/1812.05905). *arXiv preprint*.

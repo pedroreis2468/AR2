@@ -67,6 +67,9 @@ def train_custom_sac(args):
     best_reward = -float('inf')
     episode_rewards = []
     episode_lengths = []
+    episode_cones_hit = []
+    episode_time_penalties = []
+    episode_progress = []
     start_time = time.time()
 
     obs, info = env.reset()
@@ -99,6 +102,9 @@ def train_custom_sac(args):
             ep_length = info['step']
             episode_rewards.append(ep_reward)
             episode_lengths.append(ep_length)
+            episode_cones_hit.append(info.get('cones_hit', 0))
+            episode_time_penalties.append(info.get('time_penalty', 0.0))
+            episode_progress.append(info.get('total_progress', 0.0))
 
             # Log
             if episode % 10 == 0:
@@ -114,6 +120,7 @@ def train_custom_sac(args):
                     f"Avg50 {avg_reward:8.1f} | "
                     f"Len {ep_length:5d} | "
                     f"Speed {info['speed_kmh']:.1f}km/h | "
+                    f"Cones {info.get('cones_hit', 0):2d} | "
                     f"α {metrics.get('alpha', 0):.3f} | "
                     f"FPS {fps:.0f}"
                 )
@@ -137,6 +144,9 @@ def train_custom_sac(args):
         os.path.join(log_dir, "training_metrics.npz"),
         rewards=episode_rewards,
         lengths=episode_lengths,
+        cones_hit=episode_cones_hit,
+        time_penalties=episode_time_penalties,
+        progress=episode_progress,
     )
 
     env.close()

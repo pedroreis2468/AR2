@@ -70,25 +70,28 @@ ros2 launch pacsim example.launch.py
 ```
 
 ---
-Parabéns por teres conseguido colocar a simulação a funcionar! Aqui tens o resumo dos passos essenciais para iniciares o PacSim corretamente no Ubuntu 24.04 (ROS 2 Jazzy):
+
+## Quick Reference: Iniciar o PacSim no Ubuntu 24.04 (ROS 2 Jazzy)
+
+Resumo dos passos essenciais para iniciar o PacSim:
 
 ### 1. Preparação do Ambiente
 
-Antes de abrir qualquer terminal, garante que o ambiente Conda não está a interferir com os pacotes do sistema:
+Garantir que o ambiente Conda não interfere com os pacotes do sistema:
 
 * **Comando:** `conda deactivate`
 
 ### 2. Terminal 1: O Simulador (PacSim)
 
-Este terminal corre o "motor" da simulação e o publicador do modelo do carro:
+Corre o motor da simulação e o publicador do modelo do carro:
 
 * **Configuração:** `source ~/pacsim_ws/install/setup.bash`
-* **Motor de Mensagens (Crucial para estabilidade):** `export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`
+* **Motor de Mensagens:** `export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`
 * **Execução:** `ros2 launch pacsim example.launch.py`
 
 ### 3. Terminal 2: A Ponte (Foxglove Bridge)
 
-Este terminal envia os dados do ROS 2 para a interface gráfica do Foxglove:
+Envia os dados do ROS 2 para a interface gráfica do Foxglove:
 
 * **Configuração:** `source ~/pacsim_ws/install/setup.bash`
 * **Motor de Mensagens:** `export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`
@@ -96,16 +99,10 @@ Este terminal envia os dados do ROS 2 para a interface gráfica do Foxglove:
 
 ### 4. Configuração no Foxglove Studio
 
-Com os terminais a correr, faz as seguintes configurações na interface:
-
-* **Ligação:** Escolhe **Foxglove WebSocket** para te conectares ao sistema.
-* **Referência Global:** No painel 3D, altera o **Fixed frame** de `<Root frame>` para **`map`**.
-* **Correção do Eixo:** Na barra lateral do painel 3D, em **Scene**, muda o **Mesh up axis** para **`Z-up`** (para o carro não ficar deitado).
-* **Ativação de Tópicos:** Na secção **Topics**, ativa o ícone do "olho" nos seguintes tópicos:
-* **`/robot_description`**: Para veres o chassis e as rodas do carro.
-* **`/pacsim/track/visualization`**: Para veres os cones da pista.
-* **`/pacsim/perception/livox_front/visualization`**: Para veres os eixos dos sensores.
-
-
-
-Agora que a simulação está estável e visível, podes começar a enviar comandos de teleoperação ou ligar o teu próprio algoritmo de condução autónoma!
+* **Ligação:** Escolher **Foxglove WebSocket** para conectar ao sistema
+* **Referência Global:** No painel 3D, alterar o **Fixed frame** de `<Root frame>` para **`map`**
+* **Correção do Eixo:** Na barra lateral do painel 3D, em **Scene**, mudar o **Mesh up axis** para **`Z-up`**
+* **Ativação de Tópicos:** Na secção **Topics**, ativar:
+  * **`/robot_description`** — chassis e rodas do carro
+  * **`/pacsim/track/visualization`** — cones da pista
+  * **`/pacsim/perception/livox_front/visualization`** — eixos dos sensores

@@ -1,0 +1,94 @@
+# =============================================================================
+# Formula Student RL - Configuração por defeito
+# =============================================================================
+
+# --- Ambiente ---
+environment:
+  dt: 0.02                    # passo de simulação (s)
+  action_repeat: 2            # sub-steps por decisão RL
+  max_episode_steps: 5000     # máximo de steps por episódio
+  randomize_track: true       # gerar nova pista a cada episódio
+  domain_randomization: true  # variar parâmetros do veículo
+
+# --- Veículo (Formula Student típico ~250kg) ---
+vehicle:
+  mass: 250.0                 # kg
+  wheelbase: 1.55             # m (distância entre eixos)
+  lr: 0.775                   # m (CG ao eixo traseiro)
+  lf: 0.775                   # m (CG ao eixo dianteiro)
+  max_steering: 0.4           # rad (~23°)
+  max_speed: 28.0             # m/s (~100 km/h)
+  max_accel: 12.0             # m/s² (~1.2g)
+  max_brake: 18.0             # m/s² (~1.8g)
+  max_steering_rate: 1.5      # rad/s
+  drag_coeff: 0.02            # coeficiente de arrasto
+  mu: 1.5                     # coeficiente de atrito (slicks seco)
+  width: 1.4                  # m
+  length: 3.0                 # m
+
+# --- Pista (regras FSG) ---
+track:
+  n_control_points: 12        # pontos de controle da spline
+  track_width: 4.0            # m (FSG mínimo 3.5m)
+  cone_spacing: 4.0           # m (FSG ~3-5m)
+  min_radius: 4.5             # m (raio mínimo de curva)
+  arena_size: 80.0            # m (tamanho da arena)
+  noise_amplitude: 0.3        # perturbação nos pontos de controle
+  orange_cone_count: 4        # cones laranja no start/finish
+
+# --- Penalizações FS-AI ---
+penalties:
+  cone_penalty_reward: -10.0       # penalização reward por cone derrubado
+  cone_penalty_seconds: 2.0        # regra FS: +2s por cone
+  orange_cone_penalty_reward: -20.0 # cones laranja = penalidade agravada
+  doo_cone_limit: 10               # DOO após N cones derrubados
+  oc_extreme_limit: 5.0            # DOO se >5m do centerline
+  oc_time_limit: 2.0               # DOO se off-course >2s consecutivos
+
+# --- Sensores ---
+sensors:
+  max_range: 15.0             # m (alcance máximo de deteção)
+  fov: 3.14159                # rad (180° campo de visão)
+  n_closest_per_side: 3       # cones mais próximos por lado
+  noise_range: 0.2            # m (ruído na distância)
+  noise_bearing: 0.007        # rad (ruído no ângulo)
+  detection_prob: 0.95        # probabilidade de detetar cone
+
+# --- SAC (Soft Actor-Critic) ---
+sac:
+  hidden_dims: [256, 256]     # camadas ocultas
+  lr_actor: 3.0e-4            # learning rate do actor
+  lr_critic: 3.0e-4           # learning rate do critic
+  lr_alpha: 3.0e-4            # learning rate do coef. de entropia
+  gamma: 0.99                 # fator de desconto
+  tau: 0.005                  # taxa de soft update (Polyak)
+  buffer_size: 1000000        # tamanho do replay buffer
+  batch_size: 256             # tamanho do batch
+  learning_starts: 5000       # steps antes de começar a aprender
+
+# --- PPO (baseline) ---
+ppo:
+  hidden_dims: [256, 256]
+  lr: 3.0e-4
+  n_steps: 2048
+  batch_size: 64
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.01
+
+# --- Treino ---
+training:
+  total_steps: 500000         # steps de treino (SAC custom)
+  total_steps_sb3: 1000000    # steps de treino (SB3)
+  n_envs: 4                   # ambientes paralelos (SB3)
+  eval_freq: 10000            # frequência de avaliação
+  n_eval_episodes: 10         # episódios de avaliação
+  checkpoint_freq: 50000      # frequência de checkpoint
+
+# --- Domain Randomization ---
+domain_randomization:
+  mass_range: [0.85, 1.15]    # ±15% na massa
+  mu_range: [0.80, 1.20]      # ±20% no atrito
+  drag_range: [0.90, 1.10]    # ±10% no arrasto
