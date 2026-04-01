@@ -1,6 +1,6 @@
 # Navegação Autónoma na Formula Student: Uma Abordagem Computacional Baseada em Aprendizagem por Reforço
 
-**UC:** Aprendizagem por Reforço — Mestrado em Engenharia Informática, Universidade do Minho, 2025/26
+**UC:** Aprendizagem por Reforço — Mestrado em Inteligência Artificial, Universidade do Minho, 2025/26
 
 **Grupo 1:**
 | Nº | Nome |
@@ -62,6 +62,7 @@ pip install -r requirements.txt
 ```
 
 ### Dependências principais
+
 - Python ≥ 3.10
 - PyTorch ≥ 2.0
 - Gymnasium ≥ 0.29
@@ -71,11 +72,13 @@ pip install -r requirements.txt
 ## Utilização
 
 ### Testar o ambiente (agente aleatório)
+
 ```bash
 python evaluate.py --random
 ```
 
 ### Treinar o agente
+
 ```bash
 # SAC custom (implementação educativa)
 python train.py --mode custom --total-steps 500000
@@ -88,6 +91,7 @@ python train.py --mode sb3 --algo ppo --total-steps 1000000
 ```
 
 ### Avaliar modelo treinado
+
 ```bash
 # Modelo SAC custom
 python evaluate.py --model runs/<run_dir>/best_model.pt --mode custom
@@ -97,6 +101,7 @@ python evaluate.py --model runs/<run_dir>/final_model.zip --mode sb3
 ```
 
 ### Monitorizar treino
+
 ```bash
 tensorboard --logdir runs/
 ```
