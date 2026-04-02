@@ -1,0 +1,110 @@
+\documentclass[runningheads]{llncs}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{graphicx}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{enumitem}
+
+\renewcommand\UrlFont{\color{blue}\rmfamily}
+\urlstyle{rm}
+
+\begin{document}
+\sloppy
+
+\title{Navegação Autónoma na Formula Student: Uma Abordagem Baseada em Aprendizagem por Reforço}
+\titlerunning{Navegação Autónoma na Formula Student com RL}
+
+\author{Luís Miguel Pereira Silva\inst{1} \and
+Pedro Miguel S.\ A.\ Urbano dos Reis\inst{1}}
+
+\authorrunning{L. Silva e P. Reis}
+
+\institute{Mestrado em Inteligência Artificial, Universidade do Minho, Braga, Portugal\\
+\email{\{pg60390,pg59908\}@alunos.uminho.pt}}
+
+\maketitle
+
+\begin{abstract}
+Este documento apresenta o planeamento de um trabalho prático centrado no desenvolvimento de um sistema de condução autónoma para a competição Formula Student, recorrendo a técnicas de Aprendizagem por Reforço (RL). O problema consiste em treinar um agente capaz de navegar numa pista delimitada por cones coloridos, respeitando as regras da categoria \textit{Driverless} (FS-AI). Será desenvolvido um ambiente de simulação 2D com modelo cinemático de bicicleta, geração procedural de pistas e penalizações realistas. A metodologia assenta na implementação de um agente \textit{Soft Actor-Critic} (SAC) para controlo em espaços de ação contínuos, utilizando \textit{Proximal Policy Optimization} (PPO) como \textit{baseline} comparativo.
+
+\keywords{Aprendizagem por Reforço \and Condução Autónoma \and Formula Student \and Soft Actor-Critic \and Simulação}
+\end{abstract}
+
+\section{Introdução e Definição do Problema}
+
+A competição Formula Student (FS) é a maior competição de engenharia automóvel universitária a nível mundial. A categoria \textit{Driverless} (FS-AI) desafia equipas a desenvolver veículos totalmente autónomos capazes de navegar numa pista delimitada por cones coloridos --- azuis (esquerda), amarelos (direita) e laranja (partida/chegada) --- sem qualquer intervenção humana~\cite{kabzan2019}. O veículo deve detetar cones, planear trajetórias e executar ações de direção e aceleração em tempo real.
+
+A solução proposta assenta em Aprendizagem por Reforço (RL)~\cite{sutton2018}: treinar um agente que aprenda a conduzir maximizando o progresso e minimizando penalizações. Este relatório documenta a metodologia planeada, incluindo ambiente, algoritmos, ferramentas e formas de validação. O código encontra-se em: \url{https://github.com/pedroreis2468/AR}.
+
+\section{Ambiente de Simulação e Geração de Dados}
+
+O treino será conduzido inteiramente em simulação, com um ambiente desenvolvido de raiz seguindo a API \textit{Gymnasium}.
+
+\textbf{Modelo do veículo.} O veículo é modelado com um modelo cinemático de bicicleta referenciado ao centro de gravidade, calibrado para um FS típico ($\sim$250\,kg, \textit{wheelbase} de 1.55\,m):
+$\dot{x} = v \cos(\theta + \beta)$, $\dot{y} = v \sin(\theta + \beta)$,
+onde $\beta = \arctan(l_r \tan \delta / L)$ é o ângulo de deslizamento lateral. O modelo inclui limite de aceleração combinada ao atrito disponível ($\mu \cdot g$).
+
+\textbf{Geração procedural e perceção.} As pistas são geradas a partir de pontos de controlo numa elipse perturbada, suavizados com \textit{splines} cúbicas periódicas, randomizando a cada episódio. A perceção é simulada por um sensor de cones (FOV: 180°, alcance: 15\,m), que retorna os 3 cones mais próximos de cada lado com ruído gaussiano ($\sim$5\%).
+
+\textbf{Regras FS-AI.} Cones derrubados: +2\,s por cone (removidos da perceção, sem terminação). Cones laranja: +4\,s. Terminação (DOO) apenas se $\geq$10 cones derrubados, desvio $>$5\,m do \textit{centerline}, ou \textit{off-course} $>$2\,s consecutivos.
+
+\section{Metodologia e Algoritmos}
+
+O problema é formulado como um MDP com $\gamma = 0.99$:
+\begin{itemize}[nosep,leftmargin=*]
+    \item \textbf{Observação} ($\mathbf{s} \in \mathbb{R}^{20}$): estado do veículo (5\,dims), posições relativas dos cones (12\,dims), distância às fronteiras e erro de \textit{heading} (3\,dims).
+    \item \textbf{Ação} ($\mathbf{a} \in [-1, 1]^2$): direção normalizada e aceleração.
+    \item \textbf{Recompensa}: $r_t = w_p \cdot \Delta_{\mathrm{prog}} - w_s \cdot |\Delta\delta| - w_l \cdot d_{\mathrm{lat}}^2 - w_t \cdot \Delta t - P_{\mathrm{cones}}$, combinando progresso, suavidade, penalidade lateral, custo temporal e penalizações por cones. Os pesos $w_i$ serão ajustados experimentalmente.
+\end{itemize}
+
+O algoritmo principal será o \textbf{Soft Actor-Critic (SAC)}~\cite{haarnoja2018}, um método \textit{off-policy} com maximização de entropia, implementado com \textit{Gaussian actor}, \textit{twin Q-networks} e temperatura $\alpha$ auto-ajustada. Como \textit{baseline}, será utilizado o \textbf{PPO} (\textit{on-policy}) via Stable-Baselines3. Aplicar-se-á \textbf{\textit{domain randomization}}~\cite{ulrich2024} variando massa ($\pm$15\%) e atrito ($\pm$20\%).
+
+\section{Ferramentas e Arquitetura de Software}
+
+O desenvolvimento assenta em Python ($\geq$3.10) com: \textbf{Gymnasium} $\geq$0.29 (API do ambiente), \textbf{PyTorch} $\geq$2.0 (redes \textit{Actor-Critic}), \textbf{Stable-Baselines3} $\geq$2.1 (PPO \textit{baseline}), \textbf{PyGame} $\geq$2.5 (renderização 2D), \textbf{TensorBoard} (monitorização) e \textbf{Git+GitHub} (versionamento e entrega).
+
+\section{Protocolo de Validação}
+
+A validação estrutura-se em três vertentes: (1)~\textbf{Desempenho desportivo} --- cada agente avaliado em 20 pistas nunca vistas, reportando taxa de voltas completas, tempo corrigido (bruto + penalizações FS-AI), cones derrubados e velocidade média (média $\pm$ desvio-padrão); (2)~\textbf{Eficiência de aprendizagem} --- monitorização ao longo de 500k \textit{steps} (SAC) e 1M \textit{steps} (PPO) da \textit{reward} cumulativa, \textit{episode length} e \textit{Q-value} estimado; (3)~\textbf{Comparação SAC vs.\ PPO} --- contraste direto em desempenho final, \textit{sample efficiency}, tempo de treino e impacto do \textit{domain randomization} na generalização.
+
+\section{Cronograma}
+
+\begin{table}[t]
+\centering
+\caption{Planeamento e datas de entrega.}
+\label{tab:cronograma}
+\begin{tabular}{ll}
+\toprule
+\textbf{Período} & \textbf{Tarefa} \\
+\midrule
+Até 30 abr & Entrega do relatório de planeamento \\
+1--18 mai  & Treino intensivo (SAC + PPO) e avaliação de métricas \\
+19--25 mai & Experiências de \textit{domain randomization} \\
+26 mai--1 jun & Preparação da apresentação \\
+2 jun      & Apresentação e resultados preliminares \\
+3--15 jun  & Incorporação de feedback; redação do relatório final \\
+16 jun     & Entrega do relatório final (LNCS) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{thebibliography}{4}
+
+\bibitem{kabzan2019}
+Kabzan, J., et al.: AMZ Driverless: The full autonomous racing system. Journal of Field Robotics \textbf{37}(7), 1267--1294 (2019)
+
+\bibitem{sutton2018}
+Sutton, R.S., Barto, A.G.: Reinforcement Learning: An Introduction. 2nd edn. MIT Press, Cambridge, MA (2018)
+
+\bibitem{haarnoja2018}
+Haarnoja, T., et al.: Soft Actor-Critic algorithms and applications. arXiv preprint arXiv:1812.05905 (2018)
+
+\bibitem{ulrich2024}
+Ulrich, F., Wehrli, T.: End-to-End deep reinforcement learning for autonomous racing dynamics. Bachelor Thesis, ZHAW School of Engineering (2024)
+
+\end{thebibliography}
+
+\end{document}

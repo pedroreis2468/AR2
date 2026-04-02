@@ -16,3 +16,11 @@ build/
 *.swp
 *.swo
 *~
+
+# LaTeX auxiliares
+*.aux
+*.out
+*.toc
+*.synctex.gz
+*.fls
+*.fdb_latexmk
