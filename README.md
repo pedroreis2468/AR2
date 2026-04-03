@@ -39,7 +39,9 @@ AR/
 ├── config/                 # Ficheiros de configuração
 │   └── default.yaml        # Parâmetros por defeito
 ├── docs/                   # Documentação adicional
-│   └── pacsim_setup.md     # Notas de setup do PacSim (ROS 2)
+│   ├── planeamento.pdf     # Relatório de planeamento (LNCS)
+│   ├── planeamento.tex     # Fonte LaTeX do relatório
+│   └── pacsim_setup.md     # Setup do PacSim 3D (objetivo secundário)
 ├── train.py                # Script de treino (SAC custom + SB3)
 ├── evaluate.py             # Script de avaliação e visualização
 └── requirements.txt        # Dependências Python
@@ -52,6 +54,10 @@ AR/
 - **SAC** (Soft Actor-Critic) como algoritmo principal — adequado para espaço de ações contínuo (steering + throttle)
 - **PPO** como baseline de comparação via Stable-Baselines3
 - **Domain randomization** — variação de massa, atrito e ruído sensorial para robustez
+
+### Extensão exploratória: PacSim (3D)
+
+Como objetivo secundário, está a ser explorada a integração com o [PacSim](https://github.com/PacSim/pacsim), um simulador 3D baseado em ROS 2. A ideia é investigar a transferência de políticas treinadas no ambiente 2D para o simulador 3D (*sim-to-sim transfer*), validando a robustez do agente num cenário mais realista. Esta componente é exploratória e não condiciona o trabalho principal. Notas de instalação em [`docs/pacsim_setup.md`](docs/pacsim_setup.md).
 
 ## Instalação
 

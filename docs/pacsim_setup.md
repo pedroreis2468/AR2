@@ -1,4 +1,8 @@
 
+# PacSim — Simulador 3D (Objetivo Secundário)
+
+> **Nota:** O trabalho principal de Aprendizagem por Reforço é desenvolvido inteiramente no ambiente 2D custom (`FSRacingEnv`). O PacSim é explorado como extensão opcional: a ideia é investigar a possibilidade de transferir políticas treinadas no ambiente 2D para o simulador 3D (sim-to-sim transfer), validando a robustez do agente num cenário mais realista. Esta integração não é garantida e depende do progresso na componente principal.
+
 ---
 
 ## Building PacSim on Ubuntu 24.04 LTS (ROS 2 Jazzy)
