@@ -66,6 +66,10 @@ O algoritmo principal será o \textbf{Soft Actor-Critic (SAC)}~\cite{haarnoja201
 
 O desenvolvimento assenta em Python ($\geq$3.10) com: \textbf{Gymnasium} $\geq$0.29 (API do ambiente), \textbf{PyTorch} $\geq$2.0 (redes \textit{Actor-Critic}), \textbf{Stable-Baselines3} $\geq$2.1 (PPO \textit{baseline}), \textbf{PyGame} $\geq$2.5 (renderização 2D), \textbf{TensorBoard} (monitorização) e \textbf{Git+GitHub} (versionamento e entrega).
 
+\section{Estado Atual da Implementação}
+
+À data de entrega deste relatório, a componente de simulação e o agente SAC encontram-se já implementados e funcionais. Concretamente: o ambiente \texttt{FSRacingEnv} está operacional com modelo cinemático, geração procedural de pistas, sensor de cones com ruído e regras FS-AI completas ($\sim$1500 linhas); o agente SAC custom (PyTorch) está implementado com \textit{Gaussian actor}, \textit{twin Q-networks}, \textit{replay buffer} e auto-tuning de $\alpha$ ($\sim$360 linhas); os \textit{scripts} de treino suportam tanto o modo custom como SB3 (SAC e PPO); e o sistema de avaliação e renderização 2D (PyGame) está funcional. O trabalho restante foca-se na fase experimental: treino extensivo dos agentes, \textit{reward shaping}, experiências de \textit{domain randomization}, análise comparativa de resultados e, como extensão exploratória, investigar a transferência de políticas para o simulador 3D PacSim (\textit{sim-to-sim transfer}).
+
 \section{Protocolo de Validação}
 
 A validação estrutura-se em três vertentes: (1)~\textbf{Desempenho desportivo} --- cada agente avaliado em 20 pistas nunca vistas, reportando taxa de voltas completas, tempo corrigido (bruto + penalizações FS-AI), cones derrubados e velocidade média (média $\pm$ desvio-padrão); (2)~\textbf{Eficiência de aprendizagem} --- monitorização ao longo de 500k \textit{steps} (SAC) e 1M \textit{steps} (PPO) da \textit{reward} cumulativa, \textit{episode length} e \textit{Q-value} estimado; (3)~\textbf{Comparação SAC vs.\ PPO} --- contraste direto em desempenho final, \textit{sample efficiency}, tempo de treino e impacto do \textit{domain randomization} na generalização.
@@ -80,13 +84,15 @@ A validação estrutura-se em três vertentes: (1)~\textbf{Desempenho desportivo
 \toprule
 \textbf{Período} & \textbf{Tarefa} \\
 \midrule
-Até 30 abr & Entrega do relatório de planeamento \\
-1--18 mai  & Treino intensivo (SAC + PPO) e avaliação de métricas \\
-19--25 mai & Experiências de \textit{domain randomization} \\
+Até 30 abr & Ambiente, agente SAC e \textit{pipeline} de treino (\textbf{concluído}) \\
+Até 30 abr & \textbf{Entrega do relatório de planeamento} \\
+1--11 mai  & Treino intensivo (SAC + PPO) e \textit{reward shaping} \\
+12--18 mai & Experiências de \textit{domain randomization} \\
+19--25 mai & Análise de resultados; exploração PacSim (sim-to-sim) \\
 26 mai--1 jun & Preparação da apresentação \\
-2 jun      & Apresentação e resultados preliminares \\
+2 jun      & \textbf{Apresentação e resultados preliminares} \\
 3--15 jun  & Incorporação de feedback; redação do relatório final \\
-16 jun     & Entrega do relatório final (LNCS) \\
+16 jun     & \textbf{Entrega do relatório final (LNCS)} \\
 \bottomrule
 \end{tabular}
 \end{table}
