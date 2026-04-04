@@ -69,11 +69,11 @@ Desenvolvimento em Python ($\geq$3.10) com: Gymnasium $\geq$0.29 (API do ambient
 
 \section{Estado Atual da Implementação}
 
-À data de entrega, a simulação e o agente SAC estão implementados e funcionais: o ambiente com modelo cinemático, geração procedural, sensor de cones e regras completas; o agente SAC custom em PyTorch; \textit{scripts} de treino para modo custom e SB3; e avaliação com renderização PyGame. O trabalho restante foca-se no treino extensivo, \textit{reward shaping}, \textit{domain randomization}, análise comparativa, e exploração de \textit{sim-to-sim transfer} para o simulador 3D PacSim.
+A simulação e o agente SAC estão implementados e funcionais: o ambiente com modelo cinemático, geração procedural, sensor de cones e regras completas; o agente SAC custom em PyTorch; \textit{scripts} de treino para modo custom e SB3; e avaliação com renderização PyGame. O trabalho restante foca-se no treino extensivo, \textit{reward shaping}, \textit{domain randomization}, análise comparativa, e exploração de \textit{sim-to-sim transfer} para o simulador 3D PacSim.
 
 \section{Protocolo de Validação}
 
-A validação estrutura-se em: (1)~\textbf{Desempenho desportivo} --- avaliação em 20 pistas nunca vistas, reportando taxa de voltas completas, tempo corrigido, cones derrubados e velocidade média ($\bar{x} \pm \sigma$); (2)~\textbf{Eficiência de aprendizagem} --- \textit{reward} cumulativa e \textit{episode length} ao longo de 500k \textit{steps} (SAC) / 1M (PPO); (3)~\textbf{Comparação SAC vs.\ PPO} --- desempenho, \textit{sample efficiency}, tempo de treino e impacto do \textit{domain randomization}.
+A validação estrutura-se em: (1)~\textbf{Desempenho desportivo} -- avaliação em pistas nunca vistas, reportando taxa de voltas completas, cones derrubados e velocidade média ($\bar{x} \pm \sigma$); (2)~\textbf{Eficiência de aprendizagem} -- \textit{reward} cumulativa e \textit{episode length} ao longo dos \textit{steps}; (3)~\textbf{Comparação SAC vs.\ PPO} -- desempenho, \textit{sample efficiency}, tempo de treino e impacto do \textit{domain randomization}.
 
 \section{Cronograma}
 \begin{table}[H]
