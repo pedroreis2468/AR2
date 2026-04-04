@@ -7,6 +7,7 @@
 \usepackage{booktabs}
 \usepackage{hyperref}
 \usepackage{enumitem}
+\usepackage{float}
 
 \renewcommand\UrlFont{\color{blue}\rmfamily}
 \urlstyle{rm}
@@ -17,8 +18,8 @@
 \title{Navegação Autónoma na Formula Student: Uma Abordagem Baseada em Aprendizagem por Reforço}
 \titlerunning{Navegação Autónoma na Formula Student com RL}
 
-\author{Luís Miguel Pereira Silva\inst{1} \and
-Pedro Miguel S.\ A.\ Urbano dos Reis\inst{1}}
+\author{Luís Miguel Pereira Silva,
+Pedro Miguel S.\ A.\ Urbano dos Reis}
 
 \authorrunning{L. Silva e P. Reis}
 
@@ -28,28 +29,28 @@ Pedro Miguel S.\ A.\ Urbano dos Reis\inst{1}}
 \maketitle
 
 \begin{abstract}
-Este documento apresenta o planeamento de um trabalho prático centrado no desenvolvimento de um sistema de condução autónoma para a competição Formula Student, recorrendo a técnicas de Aprendizagem por Reforço (RL). O problema consiste em treinar um agente capaz de navegar numa pista delimitada por cones coloridos, respeitando as regras da categoria \textit{Driverless} (FS-AI). Será desenvolvido um ambiente de simulação 2D com modelo cinemático de bicicleta, geração procedural de pistas e penalizações realistas. A metodologia assenta na implementação de um agente \textit{Soft Actor-Critic} (SAC) para controlo em espaços de ação contínuos, utilizando \textit{Proximal Policy Optimization} (PPO) como \textit{baseline} comparativo.
+Este documento apresenta o planeamento de um trabalho prático centrado no desenvolvimento de um sistema de condução autónoma para a competição Formula Student, recorrendo a técnicas de aprendizagem por reforço. O problema consiste em treinar um agente capaz de navegar numa pista delimitada por cones coloridos, respeitando as regras da categoria \textit{Driverless}. Será desenvolvido um ambiente de simulação 2D com modelo cinemático de bicicleta, geração procedural de pistas e penalizações realistas. A metodologia assenta na implementação de um agente \textit{Soft Actor-Critic} (SAC) para controlo contínuo, utilizando \textit{Proximal Policy Optimization} (PPO) como \textit{baseline}.
 
 \keywords{Aprendizagem por Reforço \and Condução Autónoma \and Formula Student \and Soft Actor-Critic \and Simulação}
 \end{abstract}
 
 \section{Introdução e Definição do Problema}
 
-A competição Formula Student (FS) é a maior competição de engenharia automóvel universitária a nível mundial. A categoria \textit{Driverless} (FS-AI) desafia equipas a desenvolver veículos totalmente autónomos capazes de navegar numa pista delimitada por cones coloridos --- azuis (esquerda), amarelos (direita) e laranja (partida/chegada) --- sem qualquer intervenção humana~\cite{kabzan2019}. O veículo deve detetar cones, planear trajetórias e executar ações de direção e aceleração em tempo real.
+A competição Formula Student é a maior competição de engenharia automóvel universitária a nível mundial. A categoria \textit{Driverless} desafia equipas a desenvolver veículos totalmente autónomos capazes de navegar numa pista delimitada por cones coloridos --- azuis (esquerda), amarelos (direita) e laranja (partida e chegada) --- sem intervenção humana~\cite{kabzan2019}. O veículo deve detetar cones, planear trajetórias e executar ações de direção e aceleração em tempo real.
 
-A solução proposta assenta em Aprendizagem por Reforço (RL)~\cite{sutton2018}: treinar um agente que aprenda a conduzir maximizando o progresso e minimizando penalizações. Este relatório documenta a metodologia planeada, incluindo ambiente, algoritmos, ferramentas e formas de validação. O código encontra-se em: \url{https://github.com/pedroreis2468/AR}.
+A solução proposta assenta em aprendizagem por reforço~\cite{sutton2018}: treinar um agente que aprenda a conduzir maximizando o progresso e minimizando penalizações. Este relatório documenta a metodologia planeada, incluindo ambiente, algoritmos, ferramentas e validação. O código encontra-se em: \url{https://github.com/pedroreis2468/AR}.
 
 \section{Ambiente de Simulação e Geração de Dados}
 
 O treino será conduzido inteiramente em simulação, com um ambiente desenvolvido de raiz seguindo a API \textit{Gymnasium}.
 
-\textbf{Modelo do veículo.} O veículo é modelado com um modelo cinemático de bicicleta referenciado ao centro de gravidade, calibrado para um FS típico ($\sim$250\,kg, \textit{wheelbase} de 1.55\,m):
+\textbf{Modelo do veículo.} Modelo cinemático de bicicleta~\cite{kong2015} referenciado ao centro de gravidade, calibrado para um carro típico ($\sim$250\,kg, \textit{wheelbase} de 1.55\,m):
 $\dot{x} = v \cos(\theta + \beta)$, $\dot{y} = v \sin(\theta + \beta)$,
-onde $\beta = \arctan(l_r \tan \delta / L)$ é o ângulo de deslizamento lateral. O modelo inclui limite de aceleração combinada ao atrito disponível ($\mu \cdot g$).
+onde $\beta = \arctan(l_r \tan \delta / L)$ é o ângulo de deslizamento lateral. Inclui limite de aceleração combinada ao atrito ($\mu \cdot g$).
 
-\textbf{Geração procedural e perceção.} As pistas são geradas a partir de pontos de controlo numa elipse perturbada, suavizados com \textit{splines} cúbicas periódicas, randomizando a cada episódio. A perceção é simulada por um sensor de cones (FOV: 180°, alcance: 15\,m), que retorna os 3 cones mais próximos de cada lado com ruído gaussiano ($\sim$5\%).
+\textbf{Geração procedural e perceção.} As pistas são geradas a partir de pontos de controlo numa elipse perturbada, suavizados com \textit{splines} cúbicas periódicas, randomizando a cada episódio. A perceção é simulada por um sensor de cones (FOV: 180°, alcance: 15\,m) que retorna os 3 cones mais próximos de cada lado com ruído gaussiano ($\sim$5\%).
 
-\textbf{Regras FS-AI.} Cones derrubados: +2\,s por cone (removidos da perceção, sem terminação). Cones laranja: +4\,s. Terminação (DOO) apenas se $\geq$10 cones derrubados, desvio $>$5\,m do \textit{centerline}, ou \textit{off-course} $>$2\,s consecutivos.
+\textbf{Regras \textit{Driverless}.} Cones derrubados: +2\,s por cone; Cones laranja: +4\,s por cone; Terminação: se $\geq$ 10 cones derrubados, desvio $>$ 5\,m do \textit{centerline}, ou \textit{off-course} $>$ 2\,s consecutivos.
 
 \section{Metodologia e Algoritmos}
 
@@ -57,26 +58,25 @@ O problema é formulado como um MDP com $\gamma = 0.99$:
 \begin{itemize}[nosep,leftmargin=*]
     \item \textbf{Observação} ($\mathbf{s} \in \mathbb{R}^{20}$): estado do veículo (5\,dims), posições relativas dos cones (12\,dims), distância às fronteiras e erro de \textit{heading} (3\,dims).
     \item \textbf{Ação} ($\mathbf{a} \in [-1, 1]^2$): direção normalizada e aceleração.
-    \item \textbf{Recompensa}: $r_t = w_p \cdot \Delta_{\mathrm{prog}} - w_s \cdot |\Delta\delta| - w_l \cdot d_{\mathrm{lat}}^2 - w_t \cdot \Delta t - P_{\mathrm{cones}}$, combinando progresso, suavidade, penalidade lateral, custo temporal e penalizações por cones. Os pesos $w_i$ serão ajustados experimentalmente.
+    \item \textbf{Recompensa}: $r_t = w_p \cdot \Delta_{\mathrm{prog}} - w_s \cdot |\Delta\delta| - w_l \cdot d_{\mathrm{lat}}^2 - w_t \cdot \Delta t - P_{\mathrm{cones}}$, combinando progresso, suavidade, penalidade lateral, custo temporal e penalizações por cones.
 \end{itemize}
 
-O algoritmo principal será o \textbf{Soft Actor-Critic (SAC)}~\cite{haarnoja2018}, um método \textit{off-policy} com maximização de entropia, implementado com \textit{Gaussian actor}, \textit{twin Q-networks} e temperatura $\alpha$ auto-ajustada. Como \textit{baseline}, será utilizado o \textbf{PPO} (\textit{on-policy}) via Stable-Baselines3. Aplicar-se-á \textbf{\textit{domain randomization}}~\cite{ulrich2024} variando massa ($\pm$15\%) e atrito ($\pm$20\%).
+O algoritmo principal será o SAC~\cite{haarnoja2018}, um método \textit{off-policy} com maximização de entropia, implementado com \textit{Gaussian actor}, \textit{twin Q-networks} e temperatura $\alpha$ auto-ajustada. Como \textit{baseline}, será utilizado o PPO~\cite{schulman2017} via Stable-Baselines3. Aplicar-se-á \textit{domain randomization}~\cite{tobin2017,ulrich2024} variando massa ($\pm$15\%) e atrito ($\pm$20\%).
 
 \section{Ferramentas e Arquitetura de Software}
 
-O desenvolvimento assenta em Python ($\geq$3.10) com: \textbf{Gymnasium} $\geq$0.29 (API do ambiente), \textbf{PyTorch} $\geq$2.0 (redes \textit{Actor-Critic}), \textbf{Stable-Baselines3} $\geq$2.1 (PPO \textit{baseline}), \textbf{PyGame} $\geq$2.5 (renderização 2D), \textbf{TensorBoard} (monitorização) e \textbf{Git+GitHub} (versionamento e entrega).
+Desenvolvimento em Python ($\geq$3.10) com: Gymnasium $\geq$0.29 (API do ambiente), PyTorch $\geq$2.0 (redes \textit{Actor-Critic}), Stable-Baselines3 $\geq$2.1 (PPO), PyGame $\geq$2.5 (renderização 2D), TensorBoard (monitorização) e Git+GitHub (versionamento).
 
 \section{Estado Atual da Implementação}
 
-À data de entrega deste relatório, a componente de simulação e o agente SAC encontram-se já implementados e funcionais. Concretamente: o ambiente \texttt{FSRacingEnv} está operacional com modelo cinemático, geração procedural de pistas, sensor de cones com ruído e regras FS-AI completas ($\sim$1500 linhas); o agente SAC custom (PyTorch) está implementado com \textit{Gaussian actor}, \textit{twin Q-networks}, \textit{replay buffer} e auto-tuning de $\alpha$ ($\sim$360 linhas); os \textit{scripts} de treino suportam tanto o modo custom como SB3 (SAC e PPO); e o sistema de avaliação e renderização 2D (PyGame) está funcional. O trabalho restante foca-se na fase experimental: treino extensivo dos agentes, \textit{reward shaping}, experiências de \textit{domain randomization}, análise comparativa de resultados e, como extensão exploratória, investigar a transferência de políticas para o simulador 3D PacSim (\textit{sim-to-sim transfer}).
+À data de entrega, a simulação e o agente SAC estão implementados e funcionais: o ambiente com modelo cinemático, geração procedural, sensor de cones e regras completas; o agente SAC custom em PyTorch; \textit{scripts} de treino para modo custom e SB3; e avaliação com renderização PyGame. O trabalho restante foca-se no treino extensivo, \textit{reward shaping}, \textit{domain randomization}, análise comparativa, e exploração de \textit{sim-to-sim transfer} para o simulador 3D PacSim.
 
 \section{Protocolo de Validação}
 
-A validação estrutura-se em três vertentes: (1)~\textbf{Desempenho desportivo} --- cada agente avaliado em 20 pistas nunca vistas, reportando taxa de voltas completas, tempo corrigido (bruto + penalizações FS-AI), cones derrubados e velocidade média (média $\pm$ desvio-padrão); (2)~\textbf{Eficiência de aprendizagem} --- monitorização ao longo de 500k \textit{steps} (SAC) e 1M \textit{steps} (PPO) da \textit{reward} cumulativa, \textit{episode length} e \textit{Q-value} estimado; (3)~\textbf{Comparação SAC vs.\ PPO} --- contraste direto em desempenho final, \textit{sample efficiency}, tempo de treino e impacto do \textit{domain randomization} na generalização.
+A validação estrutura-se em: (1)~\textbf{Desempenho desportivo} --- avaliação em 20 pistas nunca vistas, reportando taxa de voltas completas, tempo corrigido, cones derrubados e velocidade média ($\bar{x} \pm \sigma$); (2)~\textbf{Eficiência de aprendizagem} --- \textit{reward} cumulativa e \textit{episode length} ao longo de 500k \textit{steps} (SAC) / 1M (PPO); (3)~\textbf{Comparação SAC vs.\ PPO} --- desempenho, \textit{sample efficiency}, tempo de treino e impacto do \textit{domain randomization}.
 
 \section{Cronograma}
-
-\begin{table}[t]
+\begin{table}[H]
 \centering
 \caption{Planeamento e datas de entrega.}
 \label{tab:cronograma}
@@ -84,32 +84,41 @@ A validação estrutura-se em três vertentes: (1)~\textbf{Desempenho desportivo
 \toprule
 \textbf{Período} & \textbf{Tarefa} \\
 \midrule
-Até 30 abr & Ambiente, agente SAC e \textit{pipeline} de treino (\textbf{concluído}) \\
-Até 30 abr & \textbf{Entrega do relatório de planeamento} \\
-1--11 mai  & Treino intensivo (SAC + PPO) e \textit{reward shaping} \\
-12--18 mai & Experiências de \textit{domain randomization} \\
-19--25 mai & Análise de resultados; exploração PacSim (sim-to-sim) \\
-26 mai--1 jun & Preparação da apresentação \\
-2 jun      & \textbf{Apresentação e resultados preliminares} \\
-3--15 jun  & Incorporação de feedback; redação do relatório final \\
-16 jun     & \textbf{Entrega do relatório final (LNCS)} \\
+--30 abril & Ambiente, agente SAC e \textit{pipeline} de treino \\
+--30 abril & Entrega do relatório de planeamento \\
+1--11 maio  & Treino SAC + PPO e \textit{reward shaping} \\
+12--18 maio & Experiências de \textit{domain randomization} \\
+19--25 maio & Análise de resultados; exploração PacSim \\
+26 maio--1 junho & Preparação da apresentação \\
+2 junho      & Apresentação e resultados preliminares \\
+3--15 junho  & Incorporação de feedback; redação do relatório\\
+16 junnho     & Entrega do relatório final \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\begin{thebibliography}{4}
+\begin{thebibliography}{7}
 
 \bibitem{kabzan2019}
-Kabzan, J., et al.: AMZ Driverless: The full autonomous racing system. Journal of Field Robotics \textbf{37}(7), 1267--1294 (2019)
+Kabzan, J., et al.: AMZ Driverless: The full autonomous racing system. Journal of Field Robotics \textbf{37}(7), 1267--1294 (2020). \doi{10.1002/rob.21977}
 
 \bibitem{sutton2018}
-Sutton, R.S., Barto, A.G.: Reinforcement Learning: An Introduction. 2nd edn. MIT Press, Cambridge, MA (2018)
+Sutton, R.S., Barto, A.G.: Reinforcement Learning: An Introduction. 2nd edn. MIT Press, Cambridge, MA (2018). ISBN 978-0-262-03924-6
+
+\bibitem{kong2015}
+Kong, J., Pfeiffer, M., Schildbach, G., Borrelli, F.: Kinematic and dynamic vehicle models for autonomous driving control design. In: 2015 IEEE Intelligent Vehicles Symposium (IV), pp.~1094--1099. IEEE (2015). \doi{10.1109/IVS.2015.7225830}
 
 \bibitem{haarnoja2018}
-Haarnoja, T., et al.: Soft Actor-Critic algorithms and applications. arXiv preprint arXiv:1812.05905 (2018)
+Haarnoja, T., et al.: Soft Actor-Critic algorithms and applications. arXiv:1812.05905 (2018). \url{https://arxiv.org/abs/1812.05905}
+
+\bibitem{schulman2017}
+Schulman, J., Wolski, F., Dhariwal, P., Radford, A., Klimov, O.: Proximal Policy Optimization algorithms. arXiv:1707.06347 (2017). \url{https://arxiv.org/abs/1707.06347}
+
+\bibitem{tobin2017}
+Tobin, J., Fong, R., Ray, A., Schneider, J., Zaremba, W., Abbeel, P.: Domain randomization for transferring deep neural networks from simulation to the real world. In: 2017 IEEE/RSJ IROS, pp.~23--30 (2017). \doi{10.1109/IROS.2017.8202133}
 
 \bibitem{ulrich2024}
-Ulrich, F., Wehrli, T.: End-to-End deep reinforcement learning for autonomous racing dynamics. Bachelor Thesis, ZHAW School of Engineering (2024)
+Ulrich, F., Wehrli, T.: End-to-End deep reinforcement learning for autonomous racing dynamics. Bachelor Thesis, ZHAW School of Engineering (2024). \url{https://doi.org/10.21256/zhaw-32000}
 
 \end{thebibliography}
 

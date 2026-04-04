@@ -114,7 +114,10 @@ tensorboard --logdir runs/
 
 ## Referências
 
-- Kabzan, J. et al. (2019). [AMZ Driverless: The Full Autonomous Racing System](https://arxiv.org/abs/1905.05150). *Journal of Field Robotics*.
-- Sutton, R. S., & Barto, A. G. (2018). *Reinforcement Learning: An Introduction* (2nd ed.). MIT Press.
-- Ulrich, F., & Wehrli, T. (2024). [End-to-End Deep Reinforcement Learning for Autonomous Racing Dynamics](https://www.zhaw.ch/storage/engineering/institute-zentren/cai/studentische_arbeiten/Spring_2024/BA_FS24_Fabian_Ulrich_Tobias_Wehrli_End-to-End_Deep_Reinforcement_Learning_for_Autonomous_Racing_Dynamics.pdf). ZHAW.
-- Haarnoja, T. et al. (2018). [Soft Actor-Critic Algorithms and Applications](https://arxiv.org/abs/1812.05905). *arXiv preprint*.
+- Kabzan, J. et al. (2020). [AMZ Driverless: The Full Autonomous Racing System](https://doi.org/10.1002/rob.21977). *Journal of Field Robotics*, 37(7), 1267–1294.
+- Sutton, R. S., & Barto, A. G. (2018). *Reinforcement Learning: An Introduction* (2nd ed.). MIT Press. ISBN 978-0-262-03924-6.
+- Kong, J., Pfeiffer, M., Schildbach, G., & Borrelli, F. (2015). [Kinematic and Dynamic Vehicle Models for Autonomous Driving Control Design](https://doi.org/10.1109/IVS.2015.7225830). *IEEE Intelligent Vehicles Symposium*, 1094–1099.
+- Haarnoja, T. et al. (2018). [Soft Actor-Critic Algorithms and Applications](https://arxiv.org/abs/1812.05905). arXiv:1812.05905.
+- Schulman, J. et al. (2017). [Proximal Policy Optimization Algorithms](https://arxiv.org/abs/1707.06347). arXiv:1707.06347.
+- Tobin, J. et al. (2017). [Domain Randomization for Transferring Deep Neural Networks from Simulation to the Real World](https://doi.org/10.1109/IROS.2017.8202133). *IEEE/RSJ IROS*, 23–30.
+- Ulrich, F., & Wehrli, T. (2024). [End-to-End Deep Reinforcement Learning for Autonomous Racing Dynamics](https://www.zhaw.ch/storage/engineering/institute-zentren/cai/studentische_arbeiten/Spring_2024/BA_FS24_Fabian_Ulrich_Tobias_Wehrli_End-to-End_Deep_Reinforcement_Learning_for_Autonomous_Racing_Dynamics.pdf). Bachelor Thesis, ZHAW.
