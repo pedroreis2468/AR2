@@ -1,115 +1,28 @@
-# 🏎️ Formula Student Driverless — Navegação Autónoma com Aprendizagem por Reforço
+# Navegação Autónoma na Formula Student: Uma Abordagem Computacional Baseada em Aprendizagem por Reforço
 
-![Python](https://img.shields.io/badge/Python-3.11-blue)
-![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-red)
-![Gymnasium](https://img.shields.io/badge/Gymnasium-0.29+-green)
-![SAC](https://img.shields.io/badge/Algorithm-SAC-orange)
-![License](https://img.shields.io/badge/License-Academic-lightgrey)
+**UC:** Aprendizagem por Reforço — Mestrado em Inteligência Artificial, Universidade do Minho, 2025/26
 
-> **Aprendizagem por Reforço** | Mestrado em Inteligência Artificial | Universidade do Minho | 2025/26
-
-Agente de Reinforcement Learning que aprende a conduzir um carro de Formula Student Driverless numa pista delimitada por cones, seguindo as regras oficiais da competição **FS-AI**. O ambiente 2D simula sensores, física cinemática e penalizações realistas, treinando com pistas reais de competição em formato YAML.
+**Grupo 1:**
+| Nº | Nome |
+|---------|------|
+| PG60390 | Luís Miguel Pereira Silva |
+| PG59908 | Pedro Miguel Soares de Albergaria Urbano dos Reis |
 
 ---
 
-## 🎯 Objetivos
+## Descrição
 
-* Treinar um agente SAC capaz de completar voltas em pistas FS sem derrubar cones
-* Implementar regras FS-AI realistas: penalizações por cone (+2s), DOO, off-course gradual
-* Suportar pistas reais de competição (FSG19, FSE22, FSE24, etc.) via ficheiros YAML
-* Transferir políticas treinadas para o simulador 3D PacSim (objetivo exploratório)
+Agente de Reinforcement Learning que aprende a conduzir um carro de Formula Student Driverless numa pista delimitada por cones, seguindo as regras oficiais da competição FS-AI. O ambiente de simulação implementa penalizações realistas: cones derrubados aplicam penalizações de tempo (+2s cada), o carro pode ultrapassar os limites da pista (com penalizações graduais), e o episódio só termina em situações de DOO (*Did Not Operate*) — como demasiados cones derrubados ou desvio extremo do percurso.
 
----
+### Regras FS-AI implementadas
 
-## 🏗️ Arquitetura
+- **Cones azuis** (fronteira esquerda) e **amarelos** (fronteira direita), **laranja** no start/finish
+- Cones derrubados = **penalização de 2s** por cone (não terminam o episódio)
+- Cones laranja = penalidade agravada (4s)
+- **DOO** (terminação) apenas se: ≥10 cones derrubados, off-course >5m, ou off-course >2s consecutivos
+- Cones derrubados são **removidos** da perceção do agente (simulando remoção física)
 
-```
-                    ┌─────────────────┐
-                    │   train.py      │  SAC custom ou SB3
-                    │   evaluate.py   │  Avaliação + visualização
-                    └────────┬────────┘
-                             │
-                    ┌────────▼────────┐
-                    │  FSRacingEnv    │  Gymnasium environment
-                    │  (racing_env)   │
-                    └──┬─────┬─────┬──┘
-                       │     │     │
-              ┌────────▼┐ ┌──▼───┐ ┌▼──────────┐
-              │ CarModel│ │Sensor│ │TrackLoader │
-              │ (bicicl)│ │(cone)│ │ (YAML/proc)│
-              └─────────┘ └──────┘ └────────────┘
-```
-
-### Componentes
-
-| Componente | Ficheiro | Descrição |
-|-----------|----------|-----------|
-| **FSRacingEnv** | `env/racing_env.py` | Ambiente Gymnasium — observação, reward, FS-AI rules |
-| **KinematicBicycleModel** | `env/car_model.py` | Modelo cinemático de bicicleta (250kg, slicks) |
-| **ConeSensor** | `env/cone_sensor.py` | Perceção de cones no ref. do carro (simula YOLO+depth) |
-| **YAMLTrackLoader** | `env/track_loader.py` | Carrega pistas reais de competição FS |
-| **TrackGenerator** | `env/track_generator.py` | Gerador procedural de pistas (fallback) |
-| **FSRenderer** | `env/renderer.py` | Visualização PyGame em tempo real |
-| **SACAgent** | `agent/sac.py` | Soft Actor-Critic custom (PyTorch) |
-| **Networks** | `agent/networks.py` | Gaussian Actor + Twin Q-Networks |
-
----
-
-## 🔧 Regras FS-AI Implementadas
-
-| Regra | Implementação |
-|-------|--------------|
-| 🔵 Cones azuis (esquerda) | Fronteira esquerda da pista |
-| 🟡 Cones amarelos (direita) | Fronteira direita da pista |
-| 🟠 Cones laranja (start/finish) | Penalidade agravada (×2) |
-| Cone derrubado | **+2s penalização** (não termina episódio) |
-| Cone derrubado — perceção | **Removido do FOV** (persistent knockdown) |
-| DOO: ≥10 cones | Terminação imediata |
-| DOO: off-course >5m | Terminação imediata |
-| DOO: off-course >2s | Terminação imediata |
-| Off-course gradual | Penalização quadrática progressiva |
-| Volta completa | Bónus `200 - cones×5` |
-
----
-
-## 👁️ Espaço de Observação (27 dims)
-
-| Índices | Componente | Descrição |
-|:-------:|-----------|-----------|
-| 0 | `vx` | Velocidade longitudinal normalizada |
-| 1 | `vy` | Velocidade lateral normalizada |
-| 2 | `ω` | Yaw rate normalizado |
-| 3 | `δ` | Ângulo de steering normalizado |
-| 4 | `ax` | Aceleração longitudinal normalizada |
-| 5 | `ay` | Aceleração lateral normalizada |
-| 6–11 | `blue_cones` | 3 cones azuis mais próximos (x, y) |
-| 12–17 | `yellow_cones` | 3 cones amarelos mais próximos (x, y) |
-| 18–23 | `orange_cones` | 3 cones laranja mais próximos (x, y) |
-| 24 | `dist_left` | Distância à fronteira esquerda |
-| 25 | `dist_right` | Distância à fronteira direita |
-| 26 | `heading_err` | Erro de heading relativo à pista |
-
-> Flag `--legacy-obs` reduz para 21 dims (sem orange cones) para compatibilidade com modelos antigos.
-
----
-
-## 🎁 Reward Shaping
-
-| Componente | Peso | Descrição |
-|-----------|:----:|-----------|
-| `r_progress` | ×2.0 | Distância percorrida ao longo da centerline (com sinal) |
-| `r_alignment` | ×0.4 | `v × cos(heading_error)` — andar rápido E alinhado |
-| `r_smooth` | ×0.05 | Penaliza mudanças de steering > dead-band de 0.1 |
-| `r_lateral` | ×0.08 | Linear dentro da pista, quadrática fora |
-| `r_time` | -0.005 | Custo fixo por step (encorajar velocidade) |
-| `cone_hit` | -8.0 | Por cone azul/amarelo derrubado |
-| `orange_hit` | -16.0 | Por cone laranja derrubado |
-| `off-course` | quad. | Penalização progressiva fora dos limites |
-| `stagnation` | -5.0 | Se <2m de progresso em 300 steps → DOO |
-
----
-
-## 📂 Estrutura do Repositório
+## Arquitetura
 
 ```
 AR/
@@ -201,10 +114,11 @@ AR/
    python evaluate.py --model runs/<run_dir>/best/best_model.zip --mode sb3 --track FSG19
    ```
 
-7. **Monitorizar treino:**
-   ```bash
-   tensorboard --logdir runs/
-   ```
+### Monitorizar treino
+
+```bash
+tensorboard --logdir runs/
+```
 
 ### Debug
 
