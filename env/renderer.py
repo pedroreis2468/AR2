@@ -237,10 +237,11 @@ class FSRenderer:
         # Use active cones (non-knocked) for sensor lines
         active_blue = env._get_active_cones('blue')
         active_yellow = env._get_active_cones('yellow')
+        active_orange = env._get_active_cones('orange')
 
-        blue_obs, yellow_obs, _ = env.cone_sensor.get_observations(
+        blue_obs, yellow_obs, orange_obs, _ = env.cone_sensor.get_observations(
             env.car.x, env.car.y, env.car.theta,
-            active_blue, active_yellow,
+            active_blue, active_yellow, active_orange,
             add_noise=False
         )
 
