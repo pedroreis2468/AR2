@@ -18,7 +18,7 @@ from env.racing_env import FSRacingEnv
 
 def main():
     parser = argparse.ArgumentParser(description="Debug reward components")
-    parser.add_argument('--tracks-dir', type=str, default='../pistas/tracks')
+    parser.add_argument('--tracks-dir', type=str, default='tracks')
     parser.add_argument('--steps', type=int, default=300)
     parser.add_argument('--action', type=str, default='forward',
                         choices=['forward', 'left', 'right', 'random'],

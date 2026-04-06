@@ -221,7 +221,7 @@ def main():
                         help='Máximo de steps por episódio')
     parser.add_argument('--seed', type=int, default=None,
                         help='Seed para reprodutibilidade')
-    parser.add_argument('--tracks-dir', type=str, default='../pistas/tracks',
+    parser.add_argument('--tracks-dir', type=str, default='tracks',
                         help='Diretório com pistas YAML (default: ../pistas/tracks)')
     parser.add_argument('--track', type=str, default=None,
                         help='Nome de uma pista específica (e.g. FSG19)')

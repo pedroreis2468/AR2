@@ -345,7 +345,7 @@ def main():
 
     # --- Environment Options ---
     env_group = parser.add_argument_group('Environment Options')
-    env_group.add_argument('--tracks-dir', type=str, default='../pistas/tracks',
+    env_group.add_argument('--tracks-dir', type=str, default='tracks',
                            help='Diretório com pistas YAML')
     env_group.add_argument('--max-ep-steps', type=int, default=1500,
                            help='Máximo de steps por episódio (1500 evita episódios zombie)')
