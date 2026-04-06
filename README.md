@@ -16,7 +16,7 @@ Agente de Reinforcement Learning que aprende a conduzir um carro de Formula Stud
 
 ### Regras FS-AI implementadas
 
-- **Cones azuis** (fronteira esquerda) e **amarelos** (fronteira direita), **laranja** no start/finish
+- **Cones azuis** (fronteira esquerda) e **amarelos** (fronteira direita), **laranja** no (começo e fim)
 - Cones derrubados = **penalização de 2s** por cone (não terminam o episódio)
 - Cones laranja = penalidade agravada (4s)
 - **DOO** (terminação) apenas se: ≥10 cones derrubados, off-course >5m, ou off-course >2s consecutivos
