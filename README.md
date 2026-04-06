@@ -1,18 +1,14 @@
 # 🏎️ Navegação Autónoma na Formula Student: Uma Abordagem Computacional Baseada em Aprendizagem por Reforço
 
-**UC:** Aprendizagem por Reforço — Mestrado em Inteligência Artificial, Universidade do Minho, 2025/26
 
-**Grupo 1:**
-| Nº | Nome |
-|---------|------|
-| PG60390 | Luís Miguel Pereira Silva |
-| PG59908 | Pedro Miguel Soares de Albergaria Urbano dos Reis |
+![Python](https://img.shields.io/badge/Python-3.11-blue)
+![License](https://img.shields.io/badge/License-Academic-lightgrey)
 
----
-
-## Descrição
+> **Aprendizagem Profunda** | Mestrado em Inteligência Artificial | Universidade do Minho | 2025/26
 
 Agente de Reinforcement Learning que aprende a conduzir um carro de Formula Student Driverless numa pista delimitada por cones, seguindo as regras oficiais da competição FS-AI. O ambiente de simulação implementa penalizações realistas: cones derrubados aplicam penalizações de tempo (+2s cada), o carro pode ultrapassar os limites da pista (com penalizações graduais), e o episódio só termina em situações de DOO (*Did Not Operate*) — como demasiados cones derrubados ou desvio extremo do percurso.
+
+---
 
 ### Regras FS-AI implementadas
 
@@ -111,6 +107,16 @@ python evaluate.py --model runs/<run_dir>/final_model.zip --mode sb3
 ```bash
 tensorboard --logdir runs/
 ```
+
+---
+
+**Grupo 1:**
+| Nº | Nome |
+|---------|------|
+| PG60390 | Luís Miguel Pereira Silva |
+| PG59908 | Pedro Miguel Soares de Albergaria Urbano dos Reis |
+
+---
 
 ## Referências
 
