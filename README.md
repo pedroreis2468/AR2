@@ -1,4 +1,4 @@
-# Navegação Autónoma na Formula Student: Uma Abordagem Computacional Baseada em Aprendizagem por Reforço
+#🏎️ Navegação Autónoma na Formula Student: Uma Abordagem Computacional Baseada em Aprendizagem por Reforço
 
 **UC:** Aprendizagem por Reforço — Mestrado em Inteligência Artificial, Universidade do Minho, 2025/26
 
