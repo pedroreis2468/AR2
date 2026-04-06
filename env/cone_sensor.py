@@ -33,8 +33,8 @@ class ConeSensor:
         self,
         car_x: float, car_y: float, car_theta: float,
         blue_cones: np.ndarray, yellow_cones: np.ndarray,
-        add_noise: bool = True
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        orange_cones: np.ndarray, add_noise: bool = True
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, dict]:
         """
         Retorna observações dos cones no referencial do carro.
 
@@ -49,13 +49,17 @@ class ConeSensor:
         yellow_obs = self._detect_cones(
             car_x, car_y, car_theta, yellow_cones, add_noise
         )
+        orange_obs = self._detect_cones(
+            car_x, car_y, car_theta, orange_cones, add_noise
+        )
 
         visible_info = {
             'n_blue_visible': np.sum(np.any(blue_obs != 0, axis=1)),
             'n_yellow_visible': np.sum(np.any(yellow_obs != 0, axis=1)),
+            'n_orange_visible': np.sum(np.any(orange_obs != 0, axis=1)),
         }
 
-        return blue_obs, yellow_obs, visible_info
+        return blue_obs, yellow_obs, orange_obs, visible_info
 
     def _detect_cones(
         self,
@@ -117,7 +121,7 @@ class ConeSensor:
 
     def get_observation_size(self) -> int:
         """Tamanho total do vetor de observação de cones."""
-        return self.n_closest * 2 * 2  # 2 lados × n_closest × 2 coords
+        return self.n_closest * 3 * 2  # 3 cores × n_closest × 2 coords
 
 
 class BoundarySensor:

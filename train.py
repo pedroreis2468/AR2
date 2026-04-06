@@ -21,7 +21,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from env.racing_env import FSRacingEnv
 from env.car_model import VehicleParams
-from env.track_generator import TrackParams
 
 
 def train_custom_sac(args):
@@ -38,6 +37,9 @@ def train_custom_sac(args):
         randomize_track=True,
         domain_randomization=True,
         max_episode_steps=args.max_ep_steps,
+        terminate_on_cone=not args.no_terminate_on_cone,
+        tracks_dir=args.tracks_dir,
+        use_orange_cones=not args.legacy_obs,
     )
 
     # Criar agente
@@ -45,14 +47,19 @@ def train_custom_sac(args):
         obs_dim=env.observation_space.shape[0],
         action_dim=env.action_space.shape[0],
         hidden_dims=(256, 256),
-        lr_actor=3e-4,
-        lr_critic=3e-4,
+        lr_actor=args.lr,
+        lr_critic=args.lr,
         gamma=0.99,
         tau=0.005,
-        buffer_size=1_000_000,
-        batch_size=256,
-        learning_starts=5000,
+        buffer_size=args.buffer_size,
+        batch_size=args.batch_size,
+        learning_starts=args.learning_starts,
+        device=args.device,
     )
+
+    print(f"[INFO] Obs dim: {env.observation_space.shape[0]} | "
+          f"Action dim: {env.action_space.shape[0]} | "
+          f"Learning starts: {args.learning_starts} steps")
 
     # Carregar checkpoint se existir
     if args.checkpoint and os.path.exists(args.checkpoint):
@@ -67,12 +74,22 @@ def train_custom_sac(args):
     best_reward = -float('inf')
     episode_rewards = []
     episode_lengths = []
-    episode_cones_hit = []
-    episode_time_penalties = []
-    episode_progress = []
+    episode_progresses = []
     start_time = time.time()
 
+    # CSV para análise offline das métricas
+    csv_path = os.path.join(log_dir, "episode_metrics.csv")
+    with open(csv_path, 'w') as f:
+        f.write("episode,steps,reward,length,progress,speed_kmh,laps\n")
+
     obs, info = env.reset()
+
+    try:
+        from tqdm import tqdm
+        pbar = tqdm(total=args.total_steps, initial=agent.total_steps, desc="Treino SAC")
+    except ImportError:
+        pbar = None
+        print("[Aviso] tqdm não instalado. Use pip install tqdm para ver a barra de progresso.")
 
     while agent.total_steps < args.total_steps:
         # Selecionar ação
@@ -87,6 +104,8 @@ def train_custom_sac(args):
 
         # Armazenar transição
         agent.store_transition(obs, action, reward, next_obs, terminated)
+        if pbar:
+            pbar.update(1)
 
         # Atualizar agente
         if agent.total_steps >= agent.learning_starts:
@@ -98,43 +117,60 @@ def train_custom_sac(args):
 
         if done:
             episode += 1
-            ep_reward = info['episode_reward']
-            ep_length = info['step']
+            ep_reward = info.get('episode_reward', 0.0)
+            ep_length = info.get('step', 0)
+            ep_progress = info.get('total_progress', 0.0)
+            ep_laps = info.get('laps_completed', 0)
             episode_rewards.append(ep_reward)
             episode_lengths.append(ep_length)
-            episode_cones_hit.append(info.get('cones_hit', 0))
-            episode_time_penalties.append(info.get('time_penalty', 0.0))
-            episode_progress.append(info.get('total_progress', 0.0))
+            episode_progresses.append(ep_progress)
 
-            # Log
-            if episode % 10 == 0:
+            # Guardar linha no CSV
+            with open(csv_path, 'a') as f:
+                f.write(f"{episode},{agent.total_steps},{ep_reward:.2f},"
+                        f"{ep_length},{ep_progress:.1f},"
+                        f"{info.get('speed_kmh', 0):.1f},{ep_laps}\n")
+
+            # Log a cada 5 episódios
+            if episode % 5 == 0:
                 avg_reward = np.mean(episode_rewards[-50:])
                 avg_length = np.mean(episode_lengths[-50:])
+                avg_progress = np.mean(episode_progresses[-50:])
                 elapsed = time.time() - start_time
-                fps = agent.total_steps / elapsed
+                fps = agent.total_steps / max(elapsed, 1)
 
-                print(
+                msg = (
                     f"Ep {episode:5d} | "
                     f"Steps {agent.total_steps:8d} | "
-                    f"Reward {ep_reward:8.1f} | "
-                    f"Avg50 {avg_reward:8.1f} | "
+                    f"Rew {ep_reward:7.1f} | "
+                    f"Avg50 {avg_reward:7.1f} | "
+                    f"Prog {ep_progress:6.0f}m | "
+                    f"AvgProg {avg_progress:6.0f}m | "
                     f"Len {ep_length:5d} | "
-                    f"Speed {info['speed_kmh']:.1f}km/h | "
-                    f"Cones {info.get('cones_hit', 0):2d} | "
+                    f"Speed {info.get('speed_kmh', 0):.1f}km/h | "
                     f"α {metrics.get('alpha', 0):.3f} | "
                     f"FPS {fps:.0f}"
                 )
+                if pbar:
+                    pbar.write(msg)
+                else:
+                    print(msg)
 
             # Guardar melhor modelo
             if ep_reward > best_reward:
                 best_reward = ep_reward
                 agent.save(os.path.join(log_dir, "best_model.pt"))
+                if pbar:
+                    pbar.write(f"  ★ Novo melhor modelo: {ep_reward:.1f}")
 
             # Checkpoint periódico
             if episode % 100 == 0:
                 agent.save(os.path.join(log_dir, f"checkpoint_{agent.total_steps}.pt"))
 
             obs, info = env.reset()
+
+    if pbar:
+        pbar.close()
 
     # Guardar modelo final
     agent.save(os.path.join(log_dir, "final_model.pt"))
@@ -144,9 +180,6 @@ def train_custom_sac(args):
         os.path.join(log_dir, "training_metrics.npz"),
         rewards=episode_rewards,
         lengths=episode_lengths,
-        cones_hit=episode_cones_hit,
-        time_penalties=episode_time_penalties,
-        progress=episode_progress,
     )
 
     env.close()
@@ -157,7 +190,7 @@ def train_sb3(args):
     """Treino com Stable-Baselines3 (recomendado para produção)."""
     try:
         from stable_baselines3 import SAC, PPO
-        from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
+        from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv, VecNormalize
         from stable_baselines3.common.callbacks import (
             EvalCallback, CheckpointCallback
         )
@@ -181,7 +214,10 @@ def train_sb3(args):
                 randomize_track=True,
                 domain_randomization=True,
                 max_episode_steps=args.max_ep_steps,
+                terminate_on_cone=not args.no_terminate_on_cone,
                 track_seed=seed + rank,
+                tracks_dir=args.tracks_dir,
+                use_orange_cones=not args.legacy_obs,
             )
             env = Monitor(env, os.path.join(log_dir, f"monitor_{rank}"))
             return env
@@ -193,7 +229,15 @@ def train_sb3(args):
     else:
         train_env = DummyVecEnv([make_env(0)])
 
-    eval_env = DummyVecEnv([make_env(99, seed=9999)])
+    eval_env = (SubprocVecEnv([make_env(99, seed=9999)])
+                if n_envs > 1 else DummyVecEnv([make_env(99, seed=9999)]))
+
+    # Normalizar recompensas — reduz a magnitude dos gradientes do actor
+    # e estabiliza Q-values. Não normaliza observações (já feito no env).
+    train_env = VecNormalize(train_env, norm_obs=False, norm_reward=True,
+                             clip_reward=10.0, gamma=0.99)
+    eval_env  = VecNormalize(eval_env,  norm_obs=False, norm_reward=False,
+                             clip_reward=10.0, gamma=0.99, training=False)
 
     # Callbacks
     eval_callback = EvalCallback(
@@ -213,26 +257,41 @@ def train_sb3(args):
 
     # Criar modelo
     if args.algo == 'sac':
+        # target_entropy: controla quanto exploração o SAC mantém.
+        # Default SB3 = -action_dim = -2, que colapsa rápido.
+        # Usar -0.5 mantém entropia alta por mais tempo.
+        te = args.target_entropy  # float ou 'auto'
         model = SAC(
             "MlpPolicy",
             train_env,
-            learning_rate=3e-4,
-            buffer_size=1_000_000,
-            batch_size=256,
+            device=args.device,
+            learning_rate=args.lr,
+            buffer_size=args.buffer_size,
+            batch_size=args.batch_size,
             gamma=0.99,
             tau=0.005,
-            learning_starts=5000,
-            policy_kwargs=dict(net_arch=[256, 256]),
+            learning_starts=args.learning_starts,
+            target_entropy=te,
+            ent_coef='auto',          # auto-tuning, mas guiado por target_entropy
+            train_freq=1,             # update a cada step
+            gradient_steps=1,
+            policy_kwargs=dict(
+                net_arch=[256, 256],
+                optimizer_kwargs=dict(eps=1e-5),  # Adam eps mais estável
+            ),
             verbose=1,
             tensorboard_log=os.path.join(log_dir, "tb"),
         )
+        print(f"[SAC] target_entropy={te} | buffer={args.buffer_size} | "
+              f"batch={args.batch_size} | lr={args.lr}")
     elif args.algo == 'ppo':
         model = PPO(
             "MlpPolicy",
             train_env,
-            learning_rate=3e-4,
+            device=args.device,
+            learning_rate=args.lr,
             n_steps=2048,
-            batch_size=64,
+            batch_size=min(args.batch_size, 2048),
             n_epochs=10,
             gamma=0.99,
             gae_lambda=0.95,
@@ -260,32 +319,65 @@ def train_sb3(args):
 
     # Guardar modelo final
     model.save(os.path.join(log_dir, "final_model"))
+    # Guardar normalization stats para usar na avaliação
+    train_env.save(os.path.join(log_dir, "vecnormalize.pkl"))
 
     train_env.close()
     eval_env.close()
     print(f"\n[DONE] Treino completo. Modelos guardados em {log_dir}")
+    print(f"       VecNormalize stats: {os.path.join(log_dir, 'vecnormalize.pkl')}")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Treino RL para Formula Student Racing"
+        description="Treino RL para Formula Student Racing",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument('--mode', type=str, default='custom',
-                        choices=['custom', 'sb3'],
-                        help='Modo de treino: custom SAC ou stable-baselines3')
-    parser.add_argument('--algo', type=str, default='sac',
-                        choices=['sac', 'ppo'],
-                        help='Algoritmo (apenas para modo sb3)')
-    parser.add_argument('--total-steps', type=int, default=500_000,
-                        help='Número total de steps de treino')
-    parser.add_argument('--max-ep-steps', type=int, default=5000,
-                        help='Máximo de steps por episódio')
-    parser.add_argument('--n-envs', type=int, default=4,
-                        help='Número de ambientes paralelos (sb3)')
-    parser.add_argument('--render', action='store_true',
-                        help='Renderizar durante treino (apenas custom)')
-    parser.add_argument('--checkpoint', type=str, default=None,
-                        help='Caminho para checkpoint (retomar treino)')
+
+    # --- Core Options ---
+    core_group = parser.add_argument_group('Core Options')
+    core_group.add_argument('--mode', type=str, default='custom', choices=['custom', 'sb3'],
+                            help='Modo de treino: custom SAC ou stable-baselines3')
+    core_group.add_argument('--algo', type=str, default='sac', choices=['sac', 'ppo'],
+                            help='Algoritmo (apenas para modo sb3)')
+    core_group.add_argument('--device', type=str, default='auto', choices=['auto', 'cuda', 'cpu'],
+                            help='Dispositivo (auto, cuda, cpu)')
+
+    # --- Environment Options ---
+    env_group = parser.add_argument_group('Environment Options')
+    env_group.add_argument('--tracks-dir', type=str, default='../pistas/tracks',
+                           help='Diretório com pistas YAML')
+    env_group.add_argument('--max-ep-steps', type=int, default=1500,
+                           help='Máximo de steps por episódio (1500 evita episódios zombie)')
+    env_group.add_argument('--n-envs', type=int, default=4,
+                           help='Número de ambientes paralelos (sb3)')
+    env_group.add_argument('--render', action='store_true',
+                           help='Renderizar durante treino (apenas custom)')
+    env_group.add_argument('--no-terminate-on-cone', action='store_true',
+                           help='Não terminar episódio imediatamente ao bater num cone')
+    env_group.add_argument('--legacy-obs', action='store_true',
+                           help='Treinar modelo com observação 21 dims (ignorar cones laranjas)')
+
+    # --- Hyperparameters ---
+    hyper_group = parser.add_argument_group('Hyperparameters')
+    hyper_group.add_argument('--total-steps', type=int, default=500_000,
+                             help='Número total de steps de treino')
+    hyper_group.add_argument('--lr', type=float, default=3e-4,
+                             help='Learning rate (actor e critic)')
+    hyper_group.add_argument('--batch-size', type=int, default=256,
+                             help='Tamanho do batch para treino')
+    hyper_group.add_argument('--buffer-size', type=int, default=500_000,
+                             help='Tamanho do replay buffer')
+    hyper_group.add_argument('--learning-starts', type=int, default=1000,
+                             help='Steps iniciais aleatórios antes de o SAC começar a aprender')
+    hyper_group.add_argument('--target-entropy', type=float, default=-0.5,
+                             help='Entropia alvo do SAC. Default=-0.5 mantém exploração. '
+                                  'SB3 default seria -action_dim=-2 (colapsa rápido)')
+
+    # --- Checkpointing ---
+    ckpt_group = parser.add_argument_group('Checkpointing')
+    ckpt_group.add_argument('--checkpoint', type=str, default=None,
+                            help='Caminho para checkpoint (retomar treino)')
 
     args = parser.parse_args()
 

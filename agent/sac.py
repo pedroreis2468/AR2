@@ -46,6 +46,8 @@ class SACAgent:
             self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         else:
             self.device = torch.device(device)
+            
+        print(f"[SAC] Inicializado no dispositivo: {self.device}")
 
         self.obs_dim = obs_dim
         self.action_dim = action_dim

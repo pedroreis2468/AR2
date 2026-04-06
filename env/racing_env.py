@@ -1,14 +1,33 @@
 """
 Ambiente Gymnasium para corrida Formula Student com cones.
-Observação: estado do ego + cones + boundary info (~20 dims)
-Ação: [steering, throttle] contínuos em [-1, 1]
 
-Regras FS-AI realistas:
-  - Cones derrubados aplicam penalização (2s cada), NÃO terminam o episódio
-  - O carro pode passar além dos cones (off-track)
-  - DOO (Did Not Operate) se demasiados cones derrubados (>10) ou off-course >5m
-  - OC (Off-Course) se carro sai dos limites por 2+ segundos consecutivos
-  - Cones laranja derrubados = penalidade agravada
+Merge de ambas as versões:
+  - Persistent cone knockdowns (AR) — cones derrubados desaparecem do FOV
+  - DOO/OC rules FS-AI realistas (AR) — timer off-course, limites configuráveis
+  - Reward refinado (MEU) — progresso x2, alignment, dead-band smoothness,
+    lateral linear/quadrática, stagnation checkpoint
+  - Track loader YAML (MEU) — pistas reais de competição FS
+  - Orange cones na observação (MEU) — obs_dim 27
+  - 6-dim ego state (MEU) — inclui ay
+  - effective_hw dinâmico (MEU) — track_width variável por pista
+
+Observação (27 dims com orange cones, 21 sem):
+    [0]     vx         - velocidade longitudinal normalizada
+    [1]     vy         - velocidade lateral normalizada
+    [2]     omega      - yaw rate normalizado
+    [3]     steering   - ângulo de viragem atual normalizado
+    [4]     ax         - aceleração longitudinal normalizada
+    [5]     ay         - aceleração lateral normalizada
+    [6:12]  blue_cones - 3 cones azuis mais próximos (x,y) no ref. do carro
+    [12:18] yellow_cones - 3 cones amarelos mais próximos (x,y)
+    [18:24] orange_cones - 3 cones laranja (se use_orange_cones)
+    [-3]    dist_left  - distância à fronteira esquerda normalizada
+    [-2]    dist_right - distância à fronteira direita normalizada
+    [-1]    heading_err - erro de heading normalizado
+
+Ação (2 dims contínuas):
+    [0] steering_cmd  in [-1, 1]
+    [1] throttle_cmd  in [-1, 1] (negativo = travão)
 """
 import numpy as np
 import gymnasium as gym
@@ -17,29 +36,11 @@ from typing import Optional, Tuple
 
 from .car_model import KinematicBicycleModel, VehicleParams
 from .track_generator import TrackGenerator, TrackParams
+from .track_loader import YAMLTrackLoader
 from .cone_sensor import ConeSensor, BoundarySensor
 
 
 class FSRacingEnv(gym.Env):
-    """
-    Formula Student Driverless Racing Environment.
-
-    Observação (20 dims):
-        [0]     vx         - velocidade longitudinal normalizada
-        [1]     vy         - velocidade lateral normalizada
-        [2]     omega      - yaw rate normalizado
-        [3]     steering   - ângulo de viragem atual normalizado
-        [4]     ax         - aceleração longitudinal normalizada
-        [5:11]  blue_cones - 3 cones azuis mais próximos (x,y) no ref. do carro
-        [11:17] yellow_cones - 3 cones amarelos mais próximos (x,y)
-        [17]    dist_left  - distância à fronteira esquerda normalizada
-        [18]    dist_right - distância à fronteira direita normalizada
-        [19]    heading_err - erro de heading normalizado
-
-    Ação (2 dims contínuas):
-        [0] steering_cmd  ∈ [-1, 1]
-        [1] throttle_cmd  ∈ [-1, 1] (negativo = travão)
-    """
 
     metadata = {'render_modes': ['human', 'rgb_array'], 'render_fps': 50}
 
@@ -52,57 +53,64 @@ class FSRacingEnv(gym.Env):
         vehicle_params: Optional[VehicleParams] = None,
         track_params: Optional[TrackParams] = None,
         domain_randomization: bool = True,
+        terminate_on_cone: bool = False,
         dt: float = 0.02,
         action_repeat: int = 2,
-        # --- FS-AI Penalty Parameters ---
-        cone_penalty_reward: float = -10.0,         # reward penalty per cone hit
-        cone_penalty_seconds: float = 2.0,           # FS rule: 2s per cone
-        orange_cone_penalty_reward: float = -20.0,   # orange cones = worse
-        doo_cone_limit: int = 10,                    # DOO after this many cones
-        oc_lateral_limit: float = None,              # Off-Course lateral limit (auto)
-        oc_extreme_limit: float = 5.0,               # Instant DOO if >5m off centerline
-        oc_time_limit: float = 2.0,                  # OC for >2s = DOO
+        tracks_dir: str = None,
+        track_name: Optional[str] = None,
+        use_orange_cones: bool = True,
+        cone_penalty_reward: float = -8.0,
+        cone_penalty_seconds: float = 2.0,
+        orange_cone_penalty_reward: float = -16.0,
+        doo_cone_limit: int = 10,
+        oc_lateral_limit: float = None,
+        oc_extreme_limit: float = 5.0,
+        oc_time_limit: float = 2.0,
     ):
         super().__init__()
         self.render_mode = render_mode
         self.randomize_track = randomize_track
         self.max_episode_steps = max_episode_steps
         self.domain_randomization = domain_randomization
+        self.terminate_on_cone = terminate_on_cone
         self.dt = dt
         self.action_repeat = action_repeat
 
-        # FS-AI penalty params
         self.cone_penalty_reward = cone_penalty_reward
         self.cone_penalty_seconds = cone_penalty_seconds
         self.orange_cone_penalty_reward = orange_cone_penalty_reward
         self.doo_cone_limit = doo_cone_limit
         self.oc_extreme_limit = oc_extreme_limit
         self.oc_time_limit = oc_time_limit
+        self._oc_lateral_limit_override = oc_lateral_limit
 
-        # Parâmetros
         self.vehicle_params = vehicle_params or VehicleParams()
         self.track_params = track_params or TrackParams()
         self.track_seed = track_seed
+        self.tracks_dir = tracks_dir
+        self.track_name = track_name
+        self.current_track_name = track_name or ''
 
-        # OC lateral limit defaults to track half-width + margin
-        self._oc_lateral_limit_override = oc_lateral_limit
-
-        # Componentes
         self.car = KinematicBicycleModel(self.vehicle_params, dt)
-        self.track_gen = TrackGenerator(self.track_params, track_seed)
         self.cone_sensor = ConeSensor()
         self.boundary_sensor = BoundarySensor()
 
-        # Espaços de ação e observação
-        self.obs_dim = 20
-        self.action_space = spaces.Box(
-            low=-1.0, high=1.0, shape=(2,), dtype=np.float32
-        )
-        self.observation_space = spaces.Box(
-            low=-2.0, high=2.0, shape=(self.obs_dim,), dtype=np.float32
-        )
+        if tracks_dir is not None:
+            self.track_loader = YAMLTrackLoader(tracks_dir)
+            self._yaml_rng = np.random.RandomState(track_seed)
+            self.track_gen = None
+            print(f"[INFO] Carregadas {self.track_loader.n_tracks} pistas YAML: "
+                  f"{', '.join(self.track_loader.track_names)}")
+        else:
+            self.track_loader = None
+            self.track_gen = TrackGenerator(self.track_params, track_seed)
+            print("[INFO] A usar track generator procedural")
 
-        # Estado interno
+        self.use_orange_cones = use_orange_cones
+        self.obs_dim = 27 if use_orange_cones else 21
+        self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
+        self.observation_space = spaces.Box(low=-2.0, high=2.0, shape=(self.obs_dim,), dtype=np.float32)
+
         self.track_data = None
         self.current_step = 0
         self.total_progress = 0.0
@@ -112,34 +120,37 @@ class FSRacingEnv(gym.Env):
         self.episode_reward = 0.0
         self.prev_action = np.zeros(2)
 
-        # --- Cone collision tracking ---
-        self.knocked_blue = set()       # indices of knocked blue cones
-        self.knocked_yellow = set()     # indices of knocked yellow cones
-        self.knocked_orange = set()     # indices of knocked orange cones
+        self.knocked_blue = set()
+        self.knocked_yellow = set()
+        self.knocked_orange = set()
         self.total_cones_hit = 0
-        self.total_time_penalty = 0.0   # accumulated time penalty (seconds)
+        self.total_time_penalty = 0.0
+        self.oc_timer = 0.0
 
-        # --- Off-course tracking ---
-        self.oc_timer = 0.0             # time spent off-course consecutively
-
-        # Renderer
+        self._progress_checkpoint = 0.0
+        self._progress_checkpoint_step = 0
         self._renderer = None
 
-    def reset(
-        self, *, seed: Optional[int] = None, options: Optional[dict] = None
-    ) -> Tuple[np.ndarray, dict]:
-        """Reinicia o ambiente com nova pista (se randomize_track=True)."""
+    # ─── Reset ───────────────────────────────────────────────────────────
+
+    def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
 
-        # Gerar nova pista
         if self.randomize_track or self.track_data is None:
-            if seed is not None:
-                self.track_gen.rng = np.random.RandomState(seed)
-            self.track_data = self.track_gen.generate()
+            if self.track_loader is not None:
+                if self.track_name:
+                    self.track_data = self.track_loader.load_track(name=self.track_name)
+                    self.current_track_name = self.track_name
+                else:
+                    self.track_data, self.current_track_name = \
+                        self.track_loader.load_random(self._yaml_rng)
+            else:
+                if seed is not None:
+                    self.track_gen.rng = np.random.RandomState(seed)
+                self.track_data = self.track_gen.generate()
+                self.current_track_name = 'procedural'
 
         td = self.track_data
-
-        # Aplicar domain randomization
         start_offset = 0.0
         v_init = 0.0
         if self.domain_randomization:
@@ -147,20 +158,10 @@ class FSRacingEnv(gym.Env):
             v_init = np.random.uniform(0.0, 3.0)
             self._randomize_vehicle()
 
-        # Posição e heading iniciais
         start_pos = td['start_pos'].copy()
-        start_heading = td['start_heading']
+        start_pos += td['normals'][0] * start_offset
+        self.car.reset(x=start_pos[0], y=start_pos[1], theta=td['start_heading'], v=v_init)
 
-        # Offset lateral
-        normal = td['normals'][0]
-        start_pos += normal * start_offset
-
-        self.car.reset(
-            x=start_pos[0], y=start_pos[1],
-            theta=start_heading, v=v_init
-        )
-
-        # Reset counters
         self.current_step = 0
         self.total_progress = 0.0
         self.prev_progress = 0.0
@@ -169,346 +170,257 @@ class FSRacingEnv(gym.Env):
         self.episode_reward = 0.0
         self.prev_action = np.zeros(2)
         self._trajectory = [(self.car.x, self.car.y)]
-
-        # Reset cone collision state
         self.knocked_blue = set()
         self.knocked_yellow = set()
         self.knocked_orange = set()
         self.total_cones_hit = 0
         self.total_time_penalty = 0.0
-
-        # Reset off-course timer
         self.oc_timer = 0.0
+        self._progress_checkpoint = 0.0
+        self._progress_checkpoint_step = 0
 
-        # Compute OC lateral limit
-        if self._oc_lateral_limit_override is not None:
-            self.oc_lateral_limit = self._oc_lateral_limit_override
-        else:
-            # Default: slightly beyond the cones (track half-width + margin)
-            self.oc_lateral_limit = self.track_params.track_width / 2.0 + 0.5
+        effective_hw = self._get_effective_hw()
+        self.oc_lateral_limit = self._oc_lateral_limit_override if self._oc_lateral_limit_override else effective_hw + 0.5
 
-        obs = self._get_obs()
-        info = self._get_info()
+        return self._get_obs(), self._get_info()
 
-        return obs, info
+    # ─── Step ────────────────────────────────────────────────────────────
 
-    def step(
-        self, action: np.ndarray
-    ) -> Tuple[np.ndarray, float, bool, bool, dict]:
-        """Executa ação e retorna (obs, reward, terminated, truncated, info)."""
+    def step(self, action):
         action = np.clip(action, -1.0, 1.0).astype(np.float32)
-
-        # Action repeat (simular vários sub-steps por decisão RL)
         for _ in range(self.action_repeat):
             self.car.step(action)
-
         self.current_step += 1
         self._trajectory.append((self.car.x, self.car.y))
-
-        # Calcular reward
         reward, terminated = self._compute_reward(action)
         truncated = self.current_step >= self.max_episode_steps
-
         self.prev_action = action.copy()
         self.episode_reward += reward
+        return self._get_obs(), reward, terminated, truncated, self._get_info()
 
-        obs = self._get_obs()
-        info = self._get_info()
+    # ─── Observação (MEU 6-dim ego + orange cones + AR active cones) ─────
 
-        return obs, reward, terminated, truncated, info
-
-    def _get_obs(self) -> np.ndarray:
-        """Constrói o vetor de observação de 20 dimensões."""
+    def _get_obs(self):
         td = self.track_data
         p = self.vehicle_params
-
-        # Ego state (5 dims) - normalizado
         state = self.car.get_state()
+        max_lat_accel = p.mu * 9.81
+
         ego = np.array([
             state['v'] / p.max_speed,
             (state['omega'] * p.lr) / (p.max_speed + 1e-6),
             state['omega'] / (p.max_speed / p.wheelbase),
             state['steering'] / p.max_steering,
             state['ax'] / p.max_accel,
+            state['ay'] / max_lat_accel,
         ], dtype=np.float32)
 
-        # Use active (non-knocked) cones for observations
         active_blue = self._get_active_cones('blue')
         active_yellow = self._get_active_cones('yellow')
+        active_orange = self._get_active_cones('orange')
 
-        # Cone observations (12 dims)
-        blue_obs, yellow_obs, _ = self.cone_sensor.get_observations(
-            self.car.x, self.car.y, self.car.theta,
-            active_blue, active_yellow,
-            add_noise=self.domain_randomization
-        )
-        cone_obs = np.concatenate([
-            blue_obs.flatten() / self.cone_sensor.max_range,
-            yellow_obs.flatten() / self.cone_sensor.max_range,
-        ]).astype(np.float32)
+        if self.use_orange_cones:
+            blue_obs, yellow_obs, orange_obs, _ = self.cone_sensor.get_observations(
+                self.car.x, self.car.y, self.car.theta,
+                active_blue, active_yellow, active_orange,
+                add_noise=self.domain_randomization)
+            cone_obs = np.concatenate([
+                blue_obs.flatten() / self.cone_sensor.max_range,
+                yellow_obs.flatten() / self.cone_sensor.max_range,
+                orange_obs.flatten() / self.cone_sensor.max_range,
+            ]).astype(np.float32)
+        else:
+            blue_obs, yellow_obs, _, _ = self.cone_sensor.get_observations(
+                self.car.x, self.car.y, self.car.theta,
+                active_blue, active_yellow, np.zeros((0, 2)),
+                add_noise=self.domain_randomization)
+            cone_obs = np.concatenate([
+                blue_obs.flatten() / self.cone_sensor.max_range,
+                yellow_obs.flatten() / self.cone_sensor.max_range,
+            ]).astype(np.float32)
 
-        # Boundary info (3 dims)
+        effective_hw = self._get_effective_hw()
         boundary = self.boundary_sensor.get_boundary_info(
             self.car.x, self.car.y, self.car.theta,
-            td['centerline'], td['tangents'], td['normals'],
-            self.track_params.track_width / 2.0
-        )
+            td['centerline'], td['tangents'], td['normals'], effective_hw)
 
-        obs = np.concatenate([ego, cone_obs, boundary])
-        return np.clip(obs, -2.0, 2.0).astype(np.float32)
+        return np.clip(np.concatenate([ego, cone_obs, boundary]), -2.0, 2.0).astype(np.float32)
 
-    def _get_active_cones(self, color: str) -> np.ndarray:
-        """Retorna apenas os cones que NÃO foram derrubados."""
+    # ─── Active cones — persistent knockdowns (AR) ───────────────────────
+
+    def _get_active_cones(self, color):
         td = self.track_data
         if color == 'blue':
-            all_cones = td['blue_cones']
-            knocked = self.knocked_blue
+            all_c, knocked = td['blue_cones'], self.knocked_blue
         elif color == 'yellow':
-            all_cones = td['yellow_cones']
-            knocked = self.knocked_yellow
+            all_c, knocked = td['yellow_cones'], self.knocked_yellow
         else:
-            all_cones = td['orange_cones']
-            knocked = self.knocked_orange
-
-        if len(knocked) == 0:
-            return all_cones
-
-        mask = np.ones(len(all_cones), dtype=bool)
+            all_c, knocked = td['orange_cones'], self.knocked_orange
+        if not knocked:
+            return all_c
+        mask = np.ones(len(all_c), dtype=bool)
         for idx in knocked:
-            if idx < len(all_cones):
+            if idx < len(all_c):
                 mask[idx] = False
+        active = all_c[mask]
+        return active if len(active) > 0 else np.empty((0, 2), dtype=all_c.dtype)
 
-        active = all_cones[mask]
-        # Return at least an empty array with right shape
-        if len(active) == 0:
-            return np.empty((0, 2), dtype=all_cones.dtype)
-        return active
+    # ─── Reward (MEU shaping + AR FS-AI penalties) ───────────────────────
 
-    def _compute_reward(self, action: np.ndarray) -> Tuple[float, bool]:
-        """
-        Calcula a recompensa baseada em progresso, velocidade, suavidade e
-        penalizações FS-AI realistas por cones derrubados e off-course.
-        """
+    def _compute_reward(self, action):
         td = self.track_data
         cl = td['centerline']
         n_cl = len(cl)
 
-        # Encontrar posição na centerline
-        diffs = cl - np.array([self.car.x, self.car.y])
-        dists_sq = np.sum(diffs**2, axis=1)
+        car_pos = np.array([self.car.x, self.car.y])
+        dists_sq = np.sum((cl - car_pos)**2, axis=1)
         cl_idx = int(np.argmin(dists_sq))
-        lateral_dist = np.sqrt(dists_sq[cl_idx])
+        lateral_dist = float(np.sqrt(dists_sq[cl_idx]))
+        effective_hw = self._get_effective_hw()
 
-        # ---- PROGRESSO ----
-        diff_idx = (cl_idx - self.prev_cl_idx) % n_cl
+        # Progresso com sinal correto (MEU)
+        diff_idx = (cl_idx - self.prev_cl_idx + n_cl) % n_cl
         if diff_idx > n_cl // 2:
             diff_idx -= n_cl
-
         progress = 0.0
         if diff_idx > 0:
             for i in range(diff_idx):
-                idx_from = (self.prev_cl_idx + i) % n_cl
-                idx_to = (self.prev_cl_idx + i + 1) % n_cl
-                progress += np.sqrt(np.sum(
-                    (cl[idx_to] - cl[idx_from])**2
-                ))
+                a = (self.prev_cl_idx + i) % n_cl
+                b = (self.prev_cl_idx + i + 1) % n_cl
+                progress += float(np.linalg.norm(cl[b] - cl[a]))
         elif diff_idx < 0:
-            progress = diff_idx * 0.5
+            for i in range(-diff_idx):
+                a = (self.prev_cl_idx - i) % n_cl
+                b = (self.prev_cl_idx - i - 1) % n_cl
+                progress -= float(np.linalg.norm(cl[b] - cl[a]))
+        self.total_progress += max(0.0, progress)
 
-        self.total_progress += max(0, progress)
-
-        # Verificar volta completa
-        if (self.total_progress > td['track_length'] * 0.9 and
-                cl_idx < n_cl * 0.1 and self.prev_cl_idx > n_cl * 0.8):
+        if (self.total_progress > td['track_length'] * 0.9
+                and cl_idx < n_cl * 0.1 and self.prev_cl_idx > n_cl * 0.8):
             self.laps_completed += 1
             self.total_progress = 0.0
-
         self.prev_cl_idx = cl_idx
 
-        # ---- REWARD COMPONENTS ----
+        heading_err = self._get_heading_error(cl_idx)
 
-        # 1. Progresso (sinal dominante)
-        r_progress = progress * 1.0
+        # Reward components (MEU shaping)
+        r_progress = progress * 2.0
+        v_norm = self.car.v / (self.vehicle_params.max_speed + 1e-6)
+        r_alignment = v_norm * float(np.cos(heading_err)) * 0.4
+        steer_change = abs(float(action[0]) - float(self.prev_action[0]))
+        r_smooth = -max(0.0, steer_change - 0.1) * 0.05
+        lat_ratio = lateral_dist / (effective_hw + 1e-6)
+        r_lateral = -lat_ratio * 0.08 if lat_ratio <= 1.0 else -0.08 - (lat_ratio - 1.0)**2 * 2.0
+        r_time = -0.005
 
-        # 2. Velocidade na direção certa
-        heading_error = abs(self._get_heading_error(cl_idx))
-        speed_reward = (self.car.v / self.vehicle_params.max_speed) * np.cos(heading_error)
-        r_speed = speed_reward * 0.1
+        reward = r_progress + r_alignment + r_smooth + r_lateral + r_time
 
-        # 3. Penalidade de suavidade (steering jerk)
-        steering_change = abs(action[0] - self.prev_action[0])
-        r_smooth = -steering_change * 0.3
+        # Cone collisions — persistent (AR)
+        reward += self._process_cone_collisions()
+        if self.terminate_on_cone and self.total_cones_hit > 0:
+            return float(reward), True
 
-        # 4. Penalidade lateral (quadrática)
-        track_hw = self.track_params.track_width / 2.0
-        lateral_ratio = lateral_dist / track_hw
-        r_lateral = -(lateral_ratio ** 2) * 0.2
-
-        # 5. Time penalty (encorajar velocidade)
-        r_time = -0.01
-
-        # Reward total (base)
-        reward = r_progress + r_speed + r_smooth + r_lateral + r_time
-
-        # ---- CONE COLLISION (FS-AI RULES) ----
-        # Cones derrubados = penalidade, NÃO terminação
-        cone_hit_reward = self._process_cone_collisions()
-        reward += cone_hit_reward
-
-        # ---- OFF-COURSE HANDLING (FS-AI RULES) ----
+        # Off-course handling (AR)
         terminated = False
         step_time = self.dt * self.action_repeat
-
-        is_off_course = lateral_dist > self.oc_lateral_limit
-
-        if is_off_course:
+        if lateral_dist > self.oc_lateral_limit:
             self.oc_timer += step_time
-            # Gradual penalty while off-course (stronger the further out)
-            oc_ratio = lateral_dist / self.oc_lateral_limit
-            reward -= 0.5 * (oc_ratio ** 2)
+            reward -= 0.5 * (lateral_dist / self.oc_lateral_limit) ** 2
         else:
-            self.oc_timer = 0.0  # reset if back on track
+            self.oc_timer = 0.0
 
-        # --- CONDIÇÕES TERMINAIS (DOO - Did Not Operate) ---
-
-        # 1. DOO: Demasiados cones derrubados
+        # DOO conditions (AR)
         if self.total_cones_hit >= self.doo_cone_limit:
-            reward -= 50.0
-            terminated = True
-
-        # 2. DOO: Off-course extremo (>5m do centerline)
+            reward -= 50.0; terminated = True
         if lateral_dist > self.oc_extreme_limit:
-            reward -= 50.0
-            terminated = True
-
-        # 3. DOO: Off-course prolongado (>2s fora dos limites)
+            reward -= 50.0; terminated = True
         if self.oc_timer >= self.oc_time_limit:
-            reward -= 30.0
-            terminated = True
+            reward -= 30.0; terminated = True
 
-        # 4. Volta completa - bónus (penalidade de cones descontada)
+        # Lap bonus (AR)
         if self.laps_completed > 0:
-            lap_bonus = 200.0 - (self.total_cones_hit * 5.0)
-            reward += max(lap_bonus, 50.0)
+            reward += max(200.0 - self.total_cones_hit * 5.0, 50.0)
             terminated = True
 
-        # 5. Contramão prolongada
+        # Contramão
         if diff_idx < -5:
-            reward -= 20.0
-            terminated = True
+            reward -= 20.0; terminated = True
 
-        # 6. Velocidade zero por muito tempo (estagnação)
-        if self.car.v < 0.3 and self.current_step > 100:
-            reward -= 1.0
+        # Estagnação (MEU)
+        if self.car.v < 0.1 and self.current_step > 200:
+            reward -= 0.1
+        if self.current_step - self._progress_checkpoint_step >= 300:
+            if self.total_progress - self._progress_checkpoint < 2.0:
+                reward -= 5.0; terminated = True
+            self._progress_checkpoint = self.total_progress
+            self._progress_checkpoint_step = self.current_step
 
         self.prev_progress = self.total_progress
-
         return float(reward), terminated
 
-    def _process_cone_collisions(self) -> float:
-        """
-        Verifica colisões com cones e aplica penalizações FS-AI.
-        Cones derrubados são marcados e removidos da pista ativa.
-        Retorna a penalização de reward para este step.
-        """
+    # ─── Persistent cone collisions (AR) ─────────────────────────────────
+
+    def _process_cone_collisions(self):
         td = self.track_data
         car_pos = np.array([self.car.x, self.car.y])
-        cone_radius = 0.15  # raio do cone (30cm altura, ~15cm raio base)
-        car_radius = max(self.vehicle_params.width, self.vehicle_params.length) / 2.0
-
-        collision_dist = car_radius + cone_radius
+        collision_dist = max(self.vehicle_params.width, self.vehicle_params.length) / 2.0 + 0.15
         penalty = 0.0
-
-        # Check blue cones
-        for i, cone in enumerate(td['blue_cones']):
-            if i not in self.knocked_blue:
-                dist = np.sqrt(np.sum((cone - car_pos) ** 2))
-                if dist < collision_dist:
-                    self.knocked_blue.add(i)
+        for cones, knocked, pen, ts_mult in [
+            (td['blue_cones'], self.knocked_blue, self.cone_penalty_reward, 1),
+            (td['yellow_cones'], self.knocked_yellow, self.cone_penalty_reward, 1),
+            (td['orange_cones'], self.knocked_orange, self.orange_cone_penalty_reward, 2),
+        ]:
+            for i, cone in enumerate(cones):
+                if i not in knocked and np.sqrt(np.sum((cone - car_pos)**2)) < collision_dist:
+                    knocked.add(i)
                     self.total_cones_hit += 1
-                    self.total_time_penalty += self.cone_penalty_seconds
-                    penalty += self.cone_penalty_reward
-
-        # Check yellow cones
-        for i, cone in enumerate(td['yellow_cones']):
-            if i not in self.knocked_yellow:
-                dist = np.sqrt(np.sum((cone - car_pos) ** 2))
-                if dist < collision_dist:
-                    self.knocked_yellow.add(i)
-                    self.total_cones_hit += 1
-                    self.total_time_penalty += self.cone_penalty_seconds
-                    penalty += self.cone_penalty_reward
-
-        # Check orange cones (start/finish - penalidade agravada)
-        for i, cone in enumerate(td['orange_cones']):
-            if i not in self.knocked_orange:
-                dist = np.sqrt(np.sum((cone - car_pos) ** 2))
-                if dist < collision_dist:
-                    self.knocked_orange.add(i)
-                    self.total_cones_hit += 1
-                    self.total_time_penalty += self.cone_penalty_seconds * 2
-                    penalty += self.orange_cone_penalty_reward
-
+                    self.total_time_penalty += self.cone_penalty_seconds * ts_mult
+                    penalty += pen
         return penalty
 
-    def _get_heading_error(self, cl_idx: int) -> float:
-        """Calcula erro de heading relativo à tangente da pista."""
-        tangent = self.track_data['tangents'][cl_idx]
-        track_heading = np.arctan2(tangent[1], tangent[0])
-        error = self.car.theta - track_heading
-        return (error + np.pi) % (2 * np.pi) - np.pi
+    # ─── Helpers ─────────────────────────────────────────────────────────
+
+    def _get_effective_hw(self):
+        return self.track_data.get('track_width', self.track_params.track_width) / 2.0
+
+    def _get_heading_error(self, cl_idx):
+        t = self.track_data['tangents'][cl_idx]
+        err = self.car.theta - np.arctan2(t[1], t[0])
+        return (err + np.pi) % (2 * np.pi) - np.pi
 
     def _randomize_vehicle(self):
-        """Aplica domain randomization aos parâmetros do veículo."""
         p = self.vehicle_params
         p.mass = 250.0 * np.random.uniform(0.85, 1.15)
         p.mu = 1.5 * np.random.uniform(0.80, 1.20)
         p.drag_coeff = 0.02 * np.random.uniform(0.90, 1.10)
 
-    def _get_info(self) -> dict:
-        """Retorna informações adicionais do episódio."""
+    def _get_info(self):
         return {
-            'speed': self.car.v,
-            'speed_kmh': self.car.v * 3.6,
-            'total_progress': self.total_progress,
-            'laps_completed': self.laps_completed,
-            'episode_reward': self.episode_reward,
-            'step': self.current_step,
-            'x': self.car.x,
-            'y': self.car.y,
-            'theta': self.car.theta,
-            'steering': self.car.steering,
-            # --- FS-AI penalty info ---
+            'speed': self.car.v, 'speed_kmh': self.car.v * 3.6,
+            'total_progress': self.total_progress, 'laps_completed': self.laps_completed,
+            'episode_reward': self.episode_reward, 'step': self.current_step,
+            'x': self.car.x, 'y': self.car.y, 'theta': self.car.theta,
+            'steering': self.car.steering, 'track_name': self.current_track_name,
             'cones_hit': self.total_cones_hit,
             'cones_hit_blue': len(self.knocked_blue),
             'cones_hit_yellow': len(self.knocked_yellow),
             'cones_hit_orange': len(self.knocked_orange),
             'time_penalty': self.total_time_penalty,
-            'off_course_timer': self.oc_timer,
-            'doo_limit': self.doo_cone_limit,
+            'off_course_timer': self.oc_timer, 'doo_limit': self.doo_cone_limit,
         }
 
     def render(self):
-        """Renderiza o ambiente."""
         if self.render_mode is None:
             return None
-
         if self._renderer is None:
             from .renderer import FSRenderer
             self._renderer = FSRenderer(self)
-
         return self._renderer.render()
 
     def close(self):
-        """Fecha recursos."""
         if self._renderer is not None:
             self._renderer.close()
             self._renderer = None
 
 
-# Registar no Gymnasium
-gym.register(
-    id='FSRacing-v0',
-    entry_point='env.racing_env:FSRacingEnv',
-    max_episode_steps=5000,
-)
+gym.register(id='FSRacing-v0', entry_point='env.racing_env:FSRacingEnv', max_episode_steps=5000)

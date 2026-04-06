@@ -201,17 +201,45 @@ class TrackGenerator:
 
     def _place_cones_along_path(self, boundary: np.ndarray,
                                 centerline: np.ndarray) -> np.ndarray:
-        """Coloca cones ao longo de um boundary com espaçamento uniforme."""
+        """Coloca cones ao longo de um boundary com espaçamento uniforme na pista fechada."""
         p = self.params
-        cones = [boundary[0]]
-        accumulated_dist = 0.0
-
-        for i in range(1, len(boundary)):
-            d = np.sqrt(np.sum((boundary[i] - boundary[i - 1])**2))
-            accumulated_dist += d
-            if accumulated_dist >= p.cone_spacing:
-                cones.append(boundary[i])
-                accumulated_dist = 0.0
+        
+        # Calcular distância de cada segmento
+        diffs = np.diff(boundary, axis=0)
+        dists = np.sqrt(np.sum(diffs**2, axis=1))
+        
+        # Distância de fecho do loop
+        close_dist = np.sqrt(np.sum((boundary[-1] - boundary[0])**2))
+        
+        # Distância total
+        total_dist = np.sum(dists) + close_dist
+        
+        # Número de cones exatos para distribuir uniformemente (fechando o loop)
+        num_cones = int(round(total_dist / p.cone_spacing))
+        actual_spacing = total_dist / max(1, num_cones)
+        
+        # Distâncias acumuladas
+        cum_dist = np.zeros(len(boundary) + 1)
+        cum_dist[1:-1] = np.cumsum(dists)
+        cum_dist[-1] = total_dist
+        
+        # Boundary com fecho para interpolação
+        closed_boundary = np.vstack([boundary, boundary[0]])
+        
+        cones = []
+        target_dists = np.arange(num_cones) * actual_spacing
+        
+        for tgt in target_dists:
+            idx = int(np.searchsorted(cum_dist, tgt)) - 1
+            idx = max(0, idx)
+            
+            segment_length = cum_dist[idx+1] - cum_dist[idx]
+            if segment_length > 1e-6:
+                t = (tgt - cum_dist[idx]) / segment_length
+                cone_pos = closed_boundary[idx] * (1 - t) + closed_boundary[idx+1] * t
+            else:
+                cone_pos = closed_boundary[idx]
+            cones.append(cone_pos)
 
         return np.array(cones)
 
