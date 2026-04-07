@@ -107,7 +107,8 @@ class FSRacingEnv(gym.Env):
             print("[INFO] A usar track generator procedural")
 
         self.use_orange_cones = use_orange_cones
-        self.obs_dim = 27 if use_orange_cones else 21
+        # self.obs_dim = 27 if use_orange_cones else 21
+        self.obs_dim = 24 if use_orange_cones else 18
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
         self.observation_space = spaces.Box(low=-2.0, high=2.0, shape=(self.obs_dim,), dtype=np.float32)
 
@@ -239,12 +240,14 @@ class FSRacingEnv(gym.Env):
                 yellow_obs.flatten() / self.cone_sensor.max_range,
             ]).astype(np.float32)
 
-        effective_hw = self._get_effective_hw()
+        """effective_hw = self._get_effective_hw()
         boundary = self.boundary_sensor.get_boundary_info(
             self.car.x, self.car.y, self.car.theta,
             td['centerline'], td['tangents'], td['normals'], effective_hw)
 
-        return np.clip(np.concatenate([ego, cone_obs, boundary]), -2.0, 2.0).astype(np.float32)
+        return np.clip(np.concatenate([ego, cone_obs, boundary]), -2.0, 2.0).astype(np.float32)"""
+        # Removida a "batota" do boundary_sensor. O agente agora só vê o ego e os cones.
+        return np.clip(np.concatenate([ego, cone_obs]), -2.0, 2.0).astype(np.float32)
 
     # ─── Active cones — persistent knockdowns (AR) ───────────────────────
 
