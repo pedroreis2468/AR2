@@ -362,8 +362,15 @@ class FSRacingEnv(gym.Env):
 
     def _process_cone_collisions(self):
         td = self.track_data
-        car_pos = np.array([self.car.x, self.car.y])
-        collision_dist = max(self.vehicle_params.width, self.vehicle_params.length) / 2.0 + 0.15
+        
+        # Pré-calcular trigonometria para o referencial local
+        cos_t = np.cos(-self.car.theta)
+        sin_t = np.sin(-self.car.theta)
+        
+        # Limites da Bounding Box (Metade do tamanho + margem de erro)
+        half_length = (self.vehicle_params.length / 2.0) + 0.15
+        half_width = (self.vehicle_params.width / 2.0) + 0.15
+
         penalty = 0.0
         for cones, knocked, pen, ts_mult in [
             (td['blue_cones'], self.knocked_blue, self.cone_penalty_reward, 1),
@@ -371,11 +378,21 @@ class FSRacingEnv(gym.Env):
             (td['orange_cones'], self.knocked_orange, self.orange_cone_penalty_reward, 2),
         ]:
             for i, cone in enumerate(cones):
-                if i not in knocked and np.sqrt(np.sum((cone - car_pos)**2)) < collision_dist:
-                    knocked.add(i)
-                    self.total_cones_hit += 1
-                    self.total_time_penalty += self.cone_penalty_seconds * ts_mult
-                    penalty += pen
+                if i not in knocked:
+                    # Distância global
+                    dx = cone[0] - self.car.x
+                    dy = cone[1] - self.car.y
+                    
+                    # Rotação para o referencial do carro
+                    local_x = dx * cos_t - dy * sin_t
+                    local_y = dx * sin_t + dy * cos_t
+                    
+                    # Verificar colisão com a bounding box retangular
+                    if abs(local_x) < half_length and abs(local_y) < half_width:
+                        knocked.add(i)
+                        self.total_cones_hit += 1
+                        self.total_time_penalty += self.cone_penalty_seconds * ts_mult
+                        penalty += pen
         return penalty
 
     # ─── Helpers ─────────────────────────────────────────────────────────

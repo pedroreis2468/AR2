@@ -187,10 +187,10 @@ class YAMLTrackLoader:
         # Usar os boundaries reais (cones) em vez de gerar a partir da centerline
         # para manter fidelidade ao layout real
         left_boundary_smooth = self._resample_boundary(
-            left_boundary, len(centerline)
+            left_boundary, len(centerline), closed=connected
         )
         right_boundary_smooth = self._resample_boundary(
-            right_boundary, len(centerline)
+            right_boundary, len(centerline), closed=connected
         )
 
         # --- Calcular largura média da pista ---
@@ -341,10 +341,14 @@ class YAMLTrackLoader:
 
     @staticmethod
     def _resample_boundary(boundary: np.ndarray,
-                           n_points: int) -> np.ndarray:
+                           n_points: int,
+                           closed: bool = True) -> np.ndarray:
         """Reamostra um boundary para n_points pontos uniformes."""
         if len(boundary) < 2:
             return np.zeros((n_points, 2))
+
+        if closed and len(boundary) > 3:
+            return YAMLTrackLoader._fit_closed_spline(boundary, n_points)
 
         interp = YAMLTrackLoader._parametrize_by_arclength(boundary)
         t = np.linspace(0, 1, n_points)

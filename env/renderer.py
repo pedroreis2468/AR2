@@ -162,14 +162,39 @@ class FSRenderer:
         n = min(len(left), len(right))
         step = max(1, n // 200)
 
-        pts_left = [self.world_to_screen(left[i, 0], left[i, 1])
-                     for i in range(0, n, step)]
-        pts_right = [self.world_to_screen(right[i, 0], right[i, 1])
-                      for i in range(n - 1, -1, -step)]
+        # Adicionamos os pontos usando o step
+        pts_left = [self.world_to_screen(left[i, 0], left[i, 1]) for i in range(0, n, step)]
+        # Garantir que o último ponto da esquerda entra
+        if (n - 1) % step != 0:
+            pts_left.append(self.world_to_screen(left[n-1, 0], left[n-1, 1]))
+
+        # Adicionamos os pontos da direita (ordem inversa)
+        pts_right = [self.world_to_screen(right[i, 0], right[i, 1]) for i in range(n - 1, -1, -step)]
+        # Garantir que o primeiro ponto da direita (que é o último a ser desenhado) entra
+        if (n - 1) % step != 0:
+            pts_right.append(self.world_to_screen(right[0, 0], right[0, 1]))
 
         if len(pts_left) > 2 and len(pts_right) > 2:
             polygon = pts_left + pts_right
             pygame.draw.polygon(self.screen, self.TRACK_COLOR, polygon)
+
+        # Desenhar linha de start/finish
+        self._draw_start_finish(td)
+
+    def _draw_start_finish(self, td):
+        """Desenha a linha de partida/chegada."""
+        orange = td['orange_cones']
+        if len(orange) >= 2:
+            # Usar os dois primeiros cones laranja como start line
+            p1 = self.world_to_screen(orange[0, 0], orange[0, 1])
+            p2 = self.world_to_screen(orange[1, 0], orange[1, 1])
+            pygame.draw.line(self.screen, (255, 255, 255), p1, p2, 2)
+
+            # Label "START"
+            mid_x = (p1[0] + p2[0]) // 2
+            mid_y = (p1[1] + p2[1]) // 2
+            txt = self.font.render("START", True, (255, 255, 255))
+            self.screen.blit(txt, (mid_x - 20, mid_y - 18))
 
     def _draw_centerline(self, centerline):
         """Desenha a centerline tracejada."""
@@ -248,7 +273,8 @@ class FSRenderer:
         cos_t = np.cos(env.car.theta)
         sin_t = np.sin(env.car.theta)
 
-        for obs, color in [(blue_obs, self.SENSOR_BLUE), (yellow_obs, self.SENSOR_YELLOW)]:
+        for obs, color in [(blue_obs, self.SENSOR_BLUE), (yellow_obs, self.SENSOR_YELLOW),
+                           (orange_obs, (255, 140, 30, 100))]:
             for i in range(len(obs)):
                 if np.any(obs[i] != 0):
                     wx = env.car.x + obs[i, 0] * cos_t - obs[i, 1] * sin_t
@@ -302,7 +328,7 @@ class FSRenderer:
         hud_x = self.width - 220
         hud_y = 10
         hud_w = 210
-        hud_h = 450  # taller to fit penalty info
+        hud_h = 470  # taller to fit penalty info + track name
 
         # Fundo do HUD
         hud_surface = pygame.Surface((hud_w, hud_h), pygame.SRCALPHA)
@@ -317,7 +343,9 @@ class FSRenderer:
         line_h = 22
 
         # --- Telemetria ---
+        track_name = info.get('track_name', '')
         lines = [
+            f"Track: {track_name}" if track_name else "",
             f"Step: {info['step']}",
             f"Speed: {info['speed_kmh']:.1f} km/h",
             f"Progress: {info['total_progress']:.1f} m",
@@ -326,6 +354,7 @@ class FSRenderer:
             f"Steering: {info['steering']:.2f} rad",
             f"Heading: {np.degrees(info['theta']):.1f}°",
         ]
+        lines = [l for l in lines if l]  # remover vazios
 
         for line in lines:
             txt = self.font.render(line, True, self.HUD_TEXT)
