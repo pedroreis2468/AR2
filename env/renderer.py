@@ -178,9 +178,6 @@ class FSRenderer:
             polygon = pts_left + pts_right
             pygame.draw.polygon(self.screen, self.TRACK_COLOR, polygon)
 
-        # Desenhar linha de start/finish
-        self._draw_start_finish(td)
-
     def _draw_start_finish(self, td):
         """Desenha a linha de partida/chegada."""
         orange = td['orange_cones']
