@@ -14,16 +14,15 @@ Agente de Reinforcement Learning que aprende a conduzir um carro de Formula Stud
 
 ## 🎯 Objetivos
 
-* Treinar um agente SAC capaz de completar voltas em pistas FS sem derrubar cones
-* Implementar regras FS-AI realistas: penalizações por cone (+2s), DOO, off-course gradual
-* Suportar pistas reais de competição (FSG19, FSE22, FSE24, etc.) via ficheiros YAML
-* Transferir políticas treinadas para o simulador 3D PacSim (objetivo exploratório)
+* Treinar um agente SAC capaz de completar voltas em pistas FS sem derrubar cones.
+* Implementar regras FS-AI realistas: penalizações por cone (+2s), DOO, off-course gradual.
+* Suportar pistas reais de competição (FSG19, FSE22, FSE24, etc.) via ficheiros YAML.
+* Transferir políticas treinadas para o simulador 3D PacSim (objetivo exploratório).
 
 ---
 
 ## 🏗️ Arquitetura
 
-```
                     ┌─────────────────┐
                     │   train.py      │  SAC custom ou SB3
                     │   evaluate.py   │  Avaliação + visualização
@@ -38,20 +37,19 @@ Agente de Reinforcement Learning que aprende a conduzir um carro de Formula Stud
               │ CarModel│ │Sensor│ │TrackLoader │
               │ (bicicl)│ │(cone)│ │ (YAML/proc)│
               └─────────┘ └──────┘ └────────────┘
-```
 
 ### Componentes
 
 | Componente | Ficheiro | Descrição |
 |-----------|----------|-----------|
-| **FSRacingEnv** | `env/racing_env.py` | Ambiente Gymnasium — observação, reward, FS-AI rules |
-| **KinematicBicycleModel** | `env/car_model.py` | Modelo cinemático de bicicleta (250kg, slicks) |
-| **ConeSensor** | `env/cone_sensor.py` | Perceção de cones no ref. do carro (simula YOLO+depth) |
-| **YAMLTrackLoader** | `env/track_loader.py` | Carrega pistas reais de competição FS |
-| **TrackGenerator** | `env/track_generator.py` | Gerador procedural de pistas (fallback) |
-| **FSRenderer** | `env/renderer.py` | Visualização PyGame em tempo real |
-| **SACAgent** | `agent/sac.py` | Soft Actor-Critic custom (PyTorch) |
-| **Networks** | `agent/networks.py` | Gaussian Actor + Twin Q-Networks |
+| **FSRacingEnv** | env/racing_env.py | Ambiente Gymnasium — observação, reward, FS-AI rules |
+| **KinematicBicycleModel** | env/car_model.py | Modelo cinemático de bicicleta (250kg, slicks) |
+| **ConeSensor** | env/cone_sensor.py | Perceção de cones no ref. do carro (simula YOLO+depth) |
+| **YAMLTrackLoader** | env/track_loader.py | Carrega pistas reais de competição FS |
+| **TrackGenerator** | env/track_generator.py | Gerador procedural de pistas (fallback) |
+| **FSRenderer** | env/renderer.py | Visualização PyGame em tempo real |
+| **SACAgent** | agent/sac.py | Soft Actor-Critic custom (PyTorch) |
+| **Networks** | agent/networks.py | Gaussian Actor + Twin Q-Networks |
 
 ---
 
@@ -68,28 +66,27 @@ Agente de Reinforcement Learning que aprende a conduzir um carro de Formula Stud
 | DOO: off-course >5m | Terminação imediata |
 | DOO: off-course >2s | Terminação imediata |
 | Off-course gradual | Penalização quadrática progressiva |
-| Volta completa | Bónus `200 - cones×5` |
+| Volta completa | Bónus 200 - cones×5 |
 
 ---
 
-## 👁️ Espaço de Observação (27 dims)
+## 👁️ Espaço de Observação (24 dims)
+
+> **Nota:** O agente é avaliado estritamente pela sua perceção local (visão dos cones), sem acesso à *centerline* ideal ("GPS Mágico"). O planeamento global emerge do comportamento reativo!
 
 | Índices | Componente | Descrição |
 |:-------:|-----------|-----------|
-| 0 | `vx` | Velocidade longitudinal normalizada |
-| 1 | `vy` | Velocidade lateral normalizada |
-| 2 | `ω` | Yaw rate normalizado |
-| 3 | `δ` | Ângulo de steering normalizado |
-| 4 | `ax` | Aceleração longitudinal normalizada |
-| 5 | `ay` | Aceleração lateral normalizada |
-| 6–11 | `blue_cones` | 3 cones azuis mais próximos (x, y) |
-| 12–17 | `yellow_cones` | 3 cones amarelos mais próximos (x, y) |
-| 18–23 | `orange_cones` | 3 cones laranja mais próximos (x, y) |
-| 24 | `dist_left` | Distância à fronteira esquerda |
-| 25 | `dist_right` | Distância à fronteira direita |
-| 26 | `heading_err` | Erro de heading relativo à pista |
+| 0 | vx | Velocidade longitudinal normalizada |
+| 1 | vy | Velocidade lateral normalizada |
+| 2 | ω | Yaw rate normalizado |
+| 3 | δ | Ângulo de steering normalizado |
+| 4 | ax | Aceleração longitudinal normalizada |
+| 5 | ay | Aceleração lateral normalizada |
+| 6–11 | blue_cones | 3 cones azuis mais próximos (x, y) no ref. do carro |
+| 12–17 | yellow_cones | 3 cones amarelos mais próximos (x, y) |
+| 18–23 | orange_cones | 3 cones laranja mais próximos (x, y) |
 
-> Flag `--legacy-obs` reduz para 21 dims (sem orange cones) para compatibilidade com modelos antigos.
+> A flag --legacy-obs reduz para 18 dims (sem cones laranja) para compatibilidade com modelos antigos.
 
 ---
 
@@ -97,56 +94,52 @@ Agente de Reinforcement Learning que aprende a conduzir um carro de Formula Stud
 
 | Componente | Peso | Descrição |
 |-----------|:----:|-----------|
-| `r_progress` | ×2.0 | Distância percorrida ao longo da centerline (com sinal) |
-| `r_alignment` | ×0.4 | `v × cos(heading_error)` — andar rápido E alinhado |
-| `r_smooth` | ×0.05 | Penaliza mudanças de steering > dead-band de 0.1 |
-| `r_lateral` | ×0.08 | Linear dentro da pista, quadrática fora |
-| `r_time` | -0.005 | Custo fixo por step (encorajar velocidade) |
-| `cone_hit` | -8.0 | Por cone azul/amarelo derrubado |
-| `orange_hit` | -16.0 | Por cone laranja derrubado |
-| `off-course` | quad. | Penalização progressiva fora dos limites |
-| `stagnation` | -5.0 | Se <2m de progresso em 300 steps → DOO |
+| r_progress | ×2.0 | Distância percorrida ao longo da centerline ideal (com sinal) |
+| r_alignment | ×0.4 | v × cos(heading_error) — andar rápido E alinhado com a pista |
+| r_smooth | ×0.05 | Penaliza mudanças de steering > dead-band de 0.1 |
+| r_lateral | ×0.08 | Linear dentro da pista, quadrática fora |
+| r_time | -0.005 | Custo fixo por step (encorajar velocidade) |
+| cone_hit | -8.0 | Por cone azul/amarelo derrubado |
+| orange_hit | -16.0 | Por cone laranja derrubado |
+| off-course | quad. | Penalização progressiva fora dos limites |
+| stagnation | -5.0 | Se <2m de progresso em 300 steps → DOO |
 
 ---
 
 ## 📂 Estrutura do Repositório
 
-```
 AR/
-├── train.py                       # Script de treino (SAC custom + SB3)
-├── evaluate.py                    # Avaliação e visualização de modelos
-├── debug_reward.py                # Debug de componentes do reward
-├── test_steering.py               # Teste de steering com modelo treinado
-├── requirements.txt               # Dependências Python
-│
 ├── agent/                         # Implementação do agente RL
 │   ├── sac.py                     #   Soft Actor-Critic (PyTorch)
 │   ├── networks.py                #   Gaussian Actor + Twin Q-Networks
 │   └── replay_buffer.py           #   Replay buffer circular
 │
+├── config/                        # Configuração
+│   └── default.yaml               #   Parâmetros base do veículo e algoritmos
+│
+├── docs/                          # Documentação
+│   ├── planeamento.pdf            
+│   └── pacsim_setup.md            
+│
 ├── env/                           # Ambiente de simulação Gymnasium
 │   ├── racing_env.py              #   FSRacingEnv (ambiente principal)
 │   ├── car_model.py               #   Modelo cinemático de bicicleta
 │   ├── track_generator.py         #   Gerador procedural de pistas
-│   ├── track_loader.py            #   Carregador de pistas YAML (FS reais)
-│   ├── cone_sensor.py             #   Simulação de sensores (perceção de cones)
+│   ├── track_loader.py            #   Carregador de pistas YAML
+│   ├── cone_sensor.py             #   Simulação de sensores de perceção
 │   └── renderer.py                #   Visualização PyGame
 │
-├── config/                        # Configuração
-│   └── default.yaml               #   Parâmetros por defeito (veículo, pista, SAC, PPO)
+├── scripts/                         # Scripts para testes e verificação
+│   ├── debug_reward.py            #   Debug dos componentes da recompensa
+│   └── test_steering.py           #   Teste de inferência de ações
 │
-├── docs/                          # Documentação
-│   ├── planeamento.pdf            #   Relatório de planeamento (LNCS)
-│   ├── planeamento.tex            #   Fonte LaTeX
-│   └── pacsim_setup.md            #   Setup do PacSim 3D
+├── tracks/                        # Diretório com as pistas oficiais (.yaml)
 │
-└── runs/                          # Modelos treinados (gerado pelo treino)
-    └── sb3_sac_<timestamp>/
-        ├── best/best_model.zip
-        ├── checkpoints/
-        ├── vecnormalize.pkl
-        └── tb/                    # TensorBoard logs
-```
+├── .gitignore                     
+├── evaluate.py                    # Avaliação e visualização de modelos treinados
+├── README.md                      
+├── requirements.txt               # Dependências Python
+└── train.py                       # Script principal de treino
 
 ---
 
@@ -154,100 +147,80 @@ AR/
 
 ### Pré-requisitos
 
-* **Python ≥ 3.10** (via Anaconda/Miniconda)
-* **Pistas YAML** — clonar o repositório de pistas para `../pistas/`
+* **Python ≥ 3.10** (via Anaconda/Miniconda recomendado)
 
 ### Passos
 
 1. **Clonar o repositório:**
-   ```bash
    git clone https://github.com/pedroreis2468/AR.git
    cd AR
-   ```
 
 2. **Instalar dependências:**
-   ```bash
    pip install -r requirements.txt
-   ```
 
-3. **Obter pistas (se ainda não tiver):**
-   ```bash
-   cd .. && git clone <repo-pistas> pistas && cd AR
-   ```
+3. **Testar o ambiente (agente aleatório):**
+   python evaluate.py --random
 
-4. **Testar o ambiente (agente aleatório):**
-   ```bash
-   python evaluate.py --random --tracks-dir ../pistas/tracks
-   ```
-
-5. **Treinar:**
-   ```bash
+4. **Treinar:**
    # SAC custom (educativo)
-   python train.py --mode custom --total-steps 500000 --tracks-dir ../pistas/tracks
+   python train.py --mode custom --total-steps 500000
 
    # SB3 SAC (produção, recomendado)
-   python train.py --mode sb3 --algo sac --total-steps 2500000 --tracks-dir ../pistas/tracks
+   python train.py --mode sb3 --algo sac --total-steps 2500000
 
    # SB3 PPO (baseline)
-   python train.py --mode sb3 --algo ppo --total-steps 1000000 --tracks-dir ../pistas/tracks
-   ```
+   python train.py --mode sb3 --algo ppo --total-steps 1000000
 
-6. **Avaliar modelo treinado:**
-   ```bash
-   # SB3 (auto-detecta VecNormalize)
-   python evaluate.py --model runs/<run_dir>/best/best_model.zip --mode sb3 --tracks-dir ../pistas/tracks
+5. **Avaliar modelo treinado:**
+   # SB3 (auto-detecta VecNormalize na pasta do modelo)
+   python evaluate.py --model runs/<run_dir>/best/best_model.zip --mode sb3
 
-   # Pista específica
+   # Avaliar numa pista específica
    python evaluate.py --model runs/<run_dir>/best/best_model.zip --mode sb3 --track FSG19
-   ```
 
-7. **Monitorizar treino:**
-   ```bash
+6. **Monitorizar treino:**
    tensorboard --logdir runs/
-   ```
 
-### Debug
+### Debug e Testes
 
-```bash
-# Verificar componentes do reward numa pista
-python debug_reward.py --tracks-dir ../pistas/tracks --steps 300
+# Verificar componentes do reward no terminal (roda a partir da raiz)
+python scripts/debug_reward.py --steps 300
 
-# Testar steering com modelo treinado
-python test_steering.py
-```
+# Testar steering isoladamente
+python scripts/test_steering.py
 
 ---
 
 ## ⚙️ Configuração
 
-Parâmetros editáveis em `config/default.yaml`:
+Parâmetros editáveis em config/default.yaml:
 
 | Secção | Parâmetros |
 |--------|-----------|
-| **environment** | `dt`, `action_repeat`, `max_episode_steps`, `randomize_track` |
-| **vehicle** | `mass`, `wheelbase`, `max_speed`, `max_steering`, `mu` |
-| **track** | `track_width`, `cone_spacing`, `min_radius`, `arena_size` |
-| **penalties** | `cone_penalty_reward`, `doo_cone_limit`, `oc_time_limit` |
-| **sensors** | `max_range`, `fov`, `n_closest_per_side`, `noise_range` |
-| **sac** | `hidden_dims`, `lr_actor`, `gamma`, `tau`, `buffer_size` |
-| **training** | `total_steps`, `n_envs`, `eval_freq`, `checkpoint_freq` |
+| **environment** | dt, action_repeat, max_episode_steps, randomize_track |
+| **vehicle** | mass, wheelbase, max_speed, max_steering, mu |
+| **track** | track_width, cone_spacing, min_radius, arena_size |
+| **penalties** | cone_penalty_reward, doo_cone_limit, oc_time_limit |
+| **sensors** | max_range, fov, n_closest_per_side, noise_range |
+| **sac** | hidden_dims, lr_actor, gamma, tau, buffer_size |
+| **training** | total_steps, n_envs, eval_freq, checkpoint_freq |
 
 ---
 
 ## 🧪 Extensão Exploratória: PacSim (3D)
 
-Como objetivo secundário, está a ser explorada a integração com o [PacSim](https://github.com/PacSim/pacsim), um simulador 3D baseado em ROS 2, para investigar *sim-to-sim transfer* de políticas treinadas no ambiente 2D. Notas de instalação em [`docs/pacsim_setup.md`](docs/pacsim_setup.md).
+Como objetivo secundário, está a ser explorada a integração com o PacSim, um simulador 3D baseado em ROS 2, para investigar *sim-to-sim transfer* de políticas treinadas no ambiente 2D. Notas de instalação em docs/pacsim_setup.md.
 
 ---
 
 ## 📚 Referências
 
-* Kabzan, J. et al. (2020). [AMZ Driverless: The Full Autonomous Racing System](https://doi.org/10.1002/rob.21977). *J. Field Robotics*, 37(7).
-* Haarnoja, T. et al. (2018). [Soft Actor-Critic Algorithms and Applications](https://arxiv.org/abs/1812.05905). arXiv:1812.05905.
-* Schulman, J. et al. (2017). [Proximal Policy Optimization Algorithms](https://arxiv.org/abs/1707.06347). arXiv:1707.06347.
-* Kong, J. et al. (2015). [Kinematic and Dynamic Vehicle Models for Autonomous Driving](https://doi.org/10.1109/IVS.2015.7225830). *IEEE IV*.
-* Tobin, J. et al. (2017). [Domain Randomization for Sim-to-Real Transfer](https://doi.org/10.1109/IROS.2017.8202133). *IEEE/RSJ IROS*.
-* Sutton, R. S. & Barto, A. G. (2018). *Reinforcement Learning: An Introduction* (2nd ed.). MIT Press.
+* Kabzan, J. et al. (2020). AMZ Driverless: The Full Autonomous Racing System. J. Field Robotics, 37(7).
+* Haarnoja, T. et al. (2018). Soft Actor-Critic Algorithms and Applications. arXiv:1812.05905.
+* Schulman, J. et al. (2017). Proximal Policy Optimization Algorithms. arXiv:1707.06347.
+* Kong, J. et al. (2015). Kinematic and Dynamic Vehicle Models for Autonomous Driving. IEEE IV.
+* Tobin, J. et al. (2017). Domain Randomization for Sim-to-Real Transfer. IEEE/RSJ IROS.
+* Sutton, R. S. & Barto, A. G. (2018). Reinforcement Learning: An Introduction (2nd ed.). MIT Press.
 
 ---
 

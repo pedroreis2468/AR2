@@ -1,4 +1,10 @@
 import os
+import sys
+
+# Ajustar o path para a raiz
+parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, parent_dir)
+
 os.environ['SDL_VIDEODRIVER'] = 'dummy'
 import numpy as np
 from stable_baselines3 import SAC
@@ -7,7 +13,8 @@ from env.racing_env import FSRacingEnv
 model = SAC.load('runs/sb3_sac_20260403_040429/best/best_model.zip', device='cpu')
 
 def test_env(domain_rand):
-    env = FSRacingEnv(render_mode=None, terminate_on_cone=False, domain_randomization=domain_rand, tracks_dir='../pistas/tracks')
+    # Mudámos o tracks_dir para ler a partir da raiz do projeto!
+    env = FSRacingEnv(render_mode=None, terminate_on_cone=False, domain_randomization=domain_rand, tracks_dir='tracks')
     obs, _ = env.reset()
     actions = []
     for _ in range(20):

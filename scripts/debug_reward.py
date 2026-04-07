@@ -1,17 +1,19 @@
 """
 debug_reward.py — Verifica componentes do reward sem treinar.
 
-Uso:
-    python debug_reward.py
-    python debug_reward.py --tracks-dir ../pistas/tracks --steps 300
-    python debug_reward.py --tracks-dir ../pistas/tracks --action left --steps 200
+Uso (a partir da raiz do repositório 'AR/'):
+    python tests/debug_reward.py
+    python tests/debug_reward.py --steps 300
+    python tests/debug_reward.py --action left --steps 200
 """
 import argparse
 import sys
 import os
 import numpy as np
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Ir buscar o diretório PAI (a raiz 'AR/') para que o Python encontre a pasta 'env/' e a pasta 'tracks/'
+parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, parent_dir)
 
 from env.racing_env import FSRacingEnv
 
