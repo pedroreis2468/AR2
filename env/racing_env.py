@@ -187,6 +187,16 @@ class FSRacingEnv(gym.Env):
         self._last_rewarded_lap = 0
         self._termination_reason = ''
 
+        # Pré-calcular índice da linha de meta (baseado nos cones laranja)
+        orange = td.get('orange_cones', np.zeros((0, 2)))
+        cl_arr = td.get('centerline', np.zeros((1, 2)))
+        if len(orange) >= 2 and len(cl_arr) > 0:
+            finish_pos = orange[:2].mean(axis=0)  # ponto médio entre os 2 primeiros cones laranja
+            finish_dists = np.sum((cl_arr - finish_pos)**2, axis=1)
+            self._finish_cl_idx = int(np.argmin(finish_dists))
+        else:
+            self._finish_cl_idx = 0  # fallback
+
         effective_hw = self._get_effective_hw()
         self.oc_lateral_limit = self._oc_lateral_limit_override if self._oc_lateral_limit_override else effective_hw + 0.5
 
@@ -305,11 +315,23 @@ class FSRacingEnv(gym.Env):
                 progress -= float(np.linalg.norm(cl[b] - cl[a]))
         self.total_progress += max(0.0, progress)
 
-        if (self.total_progress > td['track_length'] * 0.9
-                and cl_idx < n_cl * 0.1 and self.prev_cl_idx > n_cl * 0.8):
+        # Deteção de volta completa — baseada na passagem pela linha de meta (cones laranja)
+        finish_idx = self._finish_cl_idx
+        n_cl = len(cl)
+        # Verificar se o carro cruzou o índice da finish line neste step
+        def _crossed_finish(prev_i, curr_i, finish_i, n):
+            if prev_i == curr_i:
+                return False
+            d_prev = (prev_i - finish_i) % n
+            d_curr = (curr_i - finish_i) % n
+            # Se prev estava "atrás" (grande) e curr está "depois" (pequeno)
+            return d_prev > n * 0.5 and d_curr < n * 0.5
+
+        if (self.total_progress > td['track_length'] * 0.85
+                and _crossed_finish(self.prev_cl_idx, cl_idx, finish_idx, n_cl)):
             self.laps_completed += 1
             self.total_progress = 0.0
-            # Resetar checkpoint de estagnação (senão 0 - old_progress < 2 dispara falso)
+            # Resetar checkpoint de estagnação
             self._progress_checkpoint = 0.0
             self._progress_checkpoint_step = self.current_step
         self.prev_cl_idx = cl_idx
@@ -356,6 +378,7 @@ class FSRacingEnv(gym.Env):
         if self.laps_completed > self._last_rewarded_lap:
             reward += max(200.0 - self.total_cones_hit * 5.0, 50.0)
             self._last_rewarded_lap = self.laps_completed
+            self._termination_reason = f'volta completa ({self.laps_completed}/{self.max_laps})'
             if self.laps_completed >= self.max_laps:
                 terminated = True
 

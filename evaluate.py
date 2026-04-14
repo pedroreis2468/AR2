@@ -64,7 +64,10 @@ def evaluate_custom(args):
         )
         if terminated:
             reason = info.get('termination_reason', '??')
-            print(f"  ⛔ Terminado: {reason}")
+            if 'volta completa' in reason:
+                print(f"  ✅ Completo: {reason}")
+            else:
+                print(f"  ⛔ Terminado: {reason}")
         time.sleep(2)
 
     env.close()
@@ -135,7 +138,10 @@ def evaluate_sb3(args):
         )
         if terminated:
             reason = info.get('termination_reason', '??')
-            print(f"  ⛔ Terminado: {reason}")
+            if 'volta completa' in reason:
+                print(f"  ✅ Completo: {reason}")
+            else:
+                print(f"  ⛔ Terminado: {reason}")
         time.sleep(2)
 
     print('-' * 60)
