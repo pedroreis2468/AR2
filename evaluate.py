@@ -30,7 +30,9 @@ def evaluate_custom(args):
         tracks_dir=args.tracks_dir,
         track_name=args.track,
         use_orange_cones=not args.legacy_obs,
-        terminate_on_cone=not args.no_terminate_on_cone,
+        terminate_on_cone=False,
+        doo_cone_limit=999,
+        max_laps=args.max_laps,
     )
 
     agent = SACAgent(
@@ -57,90 +59,69 @@ def evaluate_custom(args):
             f"Reward: {total_reward:.1f} | "
             f"Steps: {info['step']} | "
             f"Progress: {info['total_progress']:.1f}m | "
-            f"Laps: {info['laps_completed']}"
+            f"Laps: {info['laps_completed']} | "
+            f"Cones: {info.get('cones_hit', 0)}"
         )
+        if terminated:
+            reason = info.get('termination_reason', '??')
+            print(f"  ⛔ Terminado: {reason}")
+        time.sleep(2)
 
     env.close()
 
 
 def evaluate_sb3(args):
-    """Avalia agente SB3 com VecNormalize."""
+    """Avalia agente SB3 sem VecEnv para controlar rendering/reset manualmente."""
     try:
         from stable_baselines3 import SAC, PPO
-        from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
     except ImportError:
         print("[ERRO] stable-baselines3 não instalado!")
         return
 
-    # Criar env vetorizado (obrigatório para VecNormalize)
-    def make_eval_env():
-        return FSRacingEnv(
-            render_mode='human',
-            randomize_track=(args.track is None),
-            domain_randomization=False,
-            max_episode_steps=args.max_steps,
-            tracks_dir=args.tracks_dir,
-            track_name=args.track,
-            use_orange_cones=not args.legacy_obs,
-            terminate_on_cone=not args.no_terminate_on_cone,
-        )
+    # Criar env direto (sem VecEnv) para controlar reset e render manualmente
+    env = FSRacingEnv(
+        render_mode='human',
+        randomize_track=(args.track is None),
+        domain_randomization=False,
+        max_episode_steps=args.max_steps,
+        tracks_dir=args.tracks_dir,
+        track_name=args.track,
+        use_orange_cones=not args.legacy_obs,
+        terminate_on_cone=False,
+        doo_cone_limit=999,
+        max_laps=args.max_laps,
+    )
 
-    env = DummyVecEnv([make_eval_env])
-
-    # Carregar VecNormalize — essencial para modelos treinados com norm_reward=True
-    vecnorm_path = args.vecnormalize
-    if vecnorm_path is None:
-        # Tentar inferir automaticamente da pasta do modelo
-        model_dir = os.path.dirname(args.model)
-        candidate = os.path.join(model_dir, 'vecnormalize.pkl')
-        if os.path.exists(candidate):
-            vecnorm_path = candidate
-            print(f"[INFO] VecNormalize encontrado automaticamente: {candidate}")
-
-    if vecnorm_path and os.path.exists(vecnorm_path):
-        env = VecNormalize.load(vecnorm_path, env)
-        env.training = False      # não atualizar stats durante avaliação
-        env.norm_reward = False   # mostrar reward real, não normalizado
-        print(f"[INFO] VecNormalize carregado de: {vecnorm_path}")
-    else:
-        print("[AVISO] vecnormalize.pkl não encontrado. O agente pode comportar-se mal!")
-        print("        Use --vecnormalize <caminho/vecnormalize.pkl>")
-
-    # Carregar modelo
+    # Carregar modelo (norm_obs=False no treino, não precisa de VecNormalize)
     model_path = args.model
-    if not model_path.endswith('.zip'):
-        model_path = model_path  # SB3 adiciona .zip automaticamente
-
     if 'ppo' in args.model.lower():
-        model = PPO.load(model_path, env=env, device=args.device)
+        model = PPO.load(model_path, device=args.device)
     else:
-        model = SAC.load(model_path, env=env, device=args.device)
+        model = SAC.load(model_path, device=args.device)
 
     print(f"\n[INFO] Modelo: {args.model}")
     print(f"[INFO] Pista: {args.track or 'aleatória'}")
+    print(f"[INFO] Max voltas: {args.max_laps}")
     print(f"[INFO] Episódios: {args.n_episodes}\n")
     print(f"{'Ep':>4} {'Reward':>8} {'Steps':>6} {'Progress':>10} {'Speed':>8} {'Laps':>5}")
-    print('-' * 50)
+    print('-' * 60)
 
     total_rewards = []
 
     for ep in range(args.n_episodes):
-        obs = env.reset()
+        obs, info = env.reset(seed=args.seed + ep if args.seed else None)
         done = False
         total_reward = 0.0
         step = 0
-        info = {}
+        terminated = False
 
         while not done:
             action, _ = model.predict(obs, deterministic=True)
-            obs, reward, done_arr, info_arr = env.step(action)
-            done = done_arr[0]
-            total_reward += float(reward[0])
+            obs, reward, terminated, truncated, info = env.step(action)
+            done = terminated or truncated
+            total_reward += reward
             step += 1
-            env.render('human')
-
-            # Mostrar info em tempo real no título (se renderer suportar)
-            info = info_arr[0] if info_arr else {}
+            env.render()
 
         total_rewards.append(total_reward)
         print(
@@ -149,10 +130,15 @@ def evaluate_sb3(args):
             f"{step:6d} "
             f"{info.get('total_progress', 0):9.1f}m "
             f"{info.get('speed_kmh', 0):7.1f}km/h "
-            f"{info.get('laps_completed', 0):5d}"
+            f"{info.get('laps_completed', 0):5d} "
+            f"Cones: {info.get('cones_hit', 0)}"
         )
+        if terminated:
+            reason = info.get('termination_reason', '??')
+            print(f"  ⛔ Terminado: {reason}")
+        time.sleep(2)
 
-    print('-' * 50)
+    print('-' * 60)
     print(f"  Média: {np.mean(total_rewards):.1f} ± {np.std(total_rewards):.1f}")
     env.close()
 
@@ -167,7 +153,9 @@ def evaluate_random(args):
         tracks_dir=args.tracks_dir,
         track_name=args.track,
         use_orange_cones=not args.legacy_obs,
-        terminate_on_cone=not args.no_terminate_on_cone,
+        terminate_on_cone=False,
+        doo_cone_limit=999,
+        max_laps=args.max_laps,
     )
 
     print("\n[INFO] A correr agente ALEATÓRIO para testar o ambiente...")
@@ -198,8 +186,12 @@ def evaluate_random(args):
             f"Ep {ep+1}/{args.n_episodes} | "
             f"Reward: {total_reward:.1f} | "
             f"Steps: {step} | "
-            f"Progress: {info['total_progress']:.1f}m"
+            f"Progress: {info['total_progress']:.1f}m | "
+            f"Cones: {info.get('cones_hit', 0)}"
         )
+        if terminated:
+            print("  ⛔ Episódio terminado — a mostrar local do acidente...")
+        time.sleep(2)
 
     env.close()
 
@@ -232,6 +224,8 @@ def main():
                         help='Usar dimensão de observação 21 (para modelos antigos sem start/finish cones)')
     parser.add_argument('--no-terminate-on-cone', action='store_true',
                         help='Não terminar episódio imediatamente ao bater num cone')
+    parser.add_argument('--max-laps', type=int, default=1,
+                        help='Número máximo de voltas antes de terminar (default: 1)')
     parser.add_argument('--vecnormalize', type=str, default=None,
                         help='Caminho para vecnormalize.pkl (auto-detectado se na mesma pasta do modelo)')
 

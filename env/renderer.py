@@ -111,10 +111,7 @@ class FSRenderer:
         # 1. Desenhar pista (área entre boundaries)
         self._draw_track_surface(td)
 
-        # 2. Centerline (tracejada)
-        self._draw_centerline(td['centerline'])
-
-        # 3. Trajectória do carro
+        # 2. Trajectória do carro
         self._draw_trajectory()
 
         # 4. Cones (com suporte para derrubados)
@@ -346,7 +343,7 @@ class FSRenderer:
             f"Step: {info['step']}",
             f"Speed: {info['speed_kmh']:.1f} km/h",
             f"Progress: {info['total_progress']:.1f} m",
-            f"Laps: {info['laps_completed']}",
+            f"Laps: {info['laps_completed']}/{env.max_laps}",
             f"Reward: {info['episode_reward']:.1f}",
             f"Steering: {info['steering']:.2f} rad",
             f"Heading: {np.degrees(info['theta']):.1f}°",

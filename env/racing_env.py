@@ -66,6 +66,7 @@ class FSRacingEnv(gym.Env):
         oc_lateral_limit: float = None,
         oc_extreme_limit: float = 5.0,
         oc_time_limit: float = 2.0,
+        max_laps: int = 1,
     ):
         super().__init__()
         self.render_mode = render_mode
@@ -82,6 +83,7 @@ class FSRacingEnv(gym.Env):
         self.doo_cone_limit = doo_cone_limit
         self.oc_extreme_limit = oc_extreme_limit
         self.oc_time_limit = oc_time_limit
+        self.max_laps = max_laps
         self._oc_lateral_limit_override = oc_lateral_limit
 
         self.vehicle_params = vehicle_params or VehicleParams()
@@ -166,7 +168,10 @@ class FSRacingEnv(gym.Env):
         self.current_step = 0
         self.total_progress = 0.0
         self.prev_progress = 0.0
-        self.prev_cl_idx = 0
+        # Inicializar prev_cl_idx com o índice real mais próximo da posição inicial
+        # (evita falsa deteção de contramão em pistas cujo start está perto do fim da centerline)
+        dists_sq = np.sum((td['centerline'] - np.array([self.car.x, self.car.y]))**2, axis=1)
+        self.prev_cl_idx = int(np.argmin(dists_sq))
         self.laps_completed = 0
         self.episode_reward = 0.0
         self.prev_action = np.zeros(2)
@@ -179,6 +184,8 @@ class FSRacingEnv(gym.Env):
         self.oc_timer = 0.0
         self._progress_checkpoint = 0.0
         self._progress_checkpoint_step = 0
+        self._last_rewarded_lap = 0
+        self._termination_reason = ''
 
         effective_hw = self._get_effective_hw()
         self.oc_lateral_limit = self._oc_lateral_limit_override if self._oc_lateral_limit_override else effective_hw + 0.5
@@ -302,6 +309,9 @@ class FSRacingEnv(gym.Env):
                 and cl_idx < n_cl * 0.1 and self.prev_cl_idx > n_cl * 0.8):
             self.laps_completed += 1
             self.total_progress = 0.0
+            # Resetar checkpoint de estagnação (senão 0 - old_progress < 2 dispara falso)
+            self._progress_checkpoint = 0.0
+            self._progress_checkpoint_step = self.current_step
         self.prev_cl_idx = cl_idx
 
         heading_err = self._get_heading_error(cl_idx)
@@ -337,17 +347,22 @@ class FSRacingEnv(gym.Env):
             reward -= 50.0; terminated = True
         if lateral_dist > self.oc_extreme_limit:
             reward -= 50.0; terminated = True
+            self._termination_reason = f'off-course extremo ({lateral_dist:.1f}m > {self.oc_extreme_limit}m)'
         if self.oc_timer >= self.oc_time_limit:
             reward -= 30.0; terminated = True
+            self._termination_reason = f'off-course timeout ({self.oc_timer:.1f}s)'
 
-        # Lap bonus (AR)
-        if self.laps_completed > 0:
+        # Lap bonus (AR) — bónus por cada volta completada
+        if self.laps_completed > self._last_rewarded_lap:
             reward += max(200.0 - self.total_cones_hit * 5.0, 50.0)
-            terminated = True
+            self._last_rewarded_lap = self.laps_completed
+            if self.laps_completed >= self.max_laps:
+                terminated = True
 
         # Contramão
         if diff_idx < -5:
             reward -= 20.0; terminated = True
+            self._termination_reason = f'contramão (diff_idx={diff_idx})'
 
         # Estagnação (MEU)
         if self.car.v < 0.1 and self.current_step > 200:
@@ -355,6 +370,7 @@ class FSRacingEnv(gym.Env):
         if self.current_step - self._progress_checkpoint_step >= 300:
             if self.total_progress - self._progress_checkpoint < 2.0:
                 reward -= 5.0; terminated = True
+                self._termination_reason = f'estagnação (progresso < 2m em 300 steps)'
             self._progress_checkpoint = self.total_progress
             self._progress_checkpoint_step = self.current_step
 
@@ -427,6 +443,7 @@ class FSRacingEnv(gym.Env):
             'cones_hit_orange': len(self.knocked_orange),
             'time_penalty': self.total_time_penalty,
             'off_course_timer': self.oc_timer, 'doo_limit': self.doo_cone_limit,
+            'termination_reason': self._termination_reason,
         }
 
     def render(self):
