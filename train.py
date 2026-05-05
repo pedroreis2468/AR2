@@ -204,7 +204,24 @@ def train_sb3(args):
     print(f"  Formula Student RL - Treino SB3 {args.algo.upper()}")
     print("=" * 60)
 
-    log_dir = f"runs/sb3_{args.algo}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    # Resolver subset de pistas a partir do split
+    from env.track_splits import TRAIN_TRACKS, TEST_TRACKS
+    if args.split == 'train':
+        allowed_tracks = TRAIN_TRACKS
+    elif args.split == 'test':
+        allowed_tracks = TEST_TRACKS
+    else:  # 'all'
+        allowed_tracks = None
+    print(f"[INFO] Split: {args.split} | seed: {args.seed} | "
+          f"pistas: {allowed_tracks if allowed_tracks else 'all'}")
+
+    # Nome do run (com algo, split, seed)
+    if args.run_name:
+        run_name = args.run_name
+    else:
+        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+        run_name = f"sb3_{args.algo}_{args.split}_seed{args.seed}_{ts}"
+    log_dir = f"runs/{run_name}"
     os.makedirs(log_dir, exist_ok=True)
 
     # Criar ambientes vetorizados
@@ -217,6 +234,7 @@ def train_sb3(args):
                 terminate_on_cone=not args.no_terminate_on_cone,
                 track_seed=seed + rank,
                 tracks_dir=args.tracks_dir,
+                allowed_tracks=allowed_tracks,
                 use_orange_cones=not args.legacy_obs,
             )
             env = Monitor(env, os.path.join(log_dir, f"monitor_{rank}"))
@@ -224,20 +242,24 @@ def train_sb3(args):
         return _init
 
     n_envs = args.n_envs
+    base_seed = args.seed * 1000  # ortogonalidade entre seeds
     if n_envs > 1:
-        train_env = SubprocVecEnv([make_env(i) for i in range(n_envs)])
+        train_env = SubprocVecEnv([make_env(i, seed=base_seed) for i in range(n_envs)])
     else:
-        train_env = DummyVecEnv([make_env(0)])
+        train_env = DummyVecEnv([make_env(0, seed=base_seed)])
 
-    eval_env = (SubprocVecEnv([make_env(99, seed=9999)])
-                if n_envs > 1 else DummyVecEnv([make_env(99, seed=9999)]))
+    # Eval env: usa SEMPRE o mesmo split (train) durante o treino para curvas comparáveis.
+    # A avaliação final em pistas inéditas é feita por scripts/eval_per_track.py.
+    eval_env = (SubprocVecEnv([make_env(99, seed=base_seed + 9999)])
+                if n_envs > 1 else DummyVecEnv([make_env(99, seed=base_seed + 9999)]))
 
     # Normalizar recompensas — reduz a magnitude dos gradientes do actor
     # e estabiliza Q-values. Não normaliza observações (já feito no env).
+    # clip_reward=50 (subido de 10) para não estrangular o lap bonus de +200.
     train_env = VecNormalize(train_env, norm_obs=False, norm_reward=True,
-                             clip_reward=10.0, gamma=0.99)
+                             clip_reward=args.clip_reward, gamma=0.99)
     eval_env  = VecNormalize(eval_env,  norm_obs=False, norm_reward=False,
-                             clip_reward=10.0, gamma=0.99, training=False)
+                             clip_reward=args.clip_reward, gamma=0.99, training=False)
 
     # Callbacks
     eval_callback = EvalCallback(
@@ -265,6 +287,7 @@ def train_sb3(args):
             "MlpPolicy",
             train_env,
             device=args.device,
+            seed=args.seed,
             learning_rate=args.lr,
             buffer_size=args.buffer_size,
             batch_size=args.batch_size,
@@ -289,6 +312,7 @@ def train_sb3(args):
             "MlpPolicy",
             train_env,
             device=args.device,
+            seed=args.seed,
             learning_rate=args.lr,
             n_steps=2048,
             batch_size=min(args.batch_size, 2048),
@@ -379,7 +403,33 @@ def main():
     ckpt_group.add_argument('--checkpoint', type=str, default=None,
                             help='Caminho para checkpoint (retomar treino)')
 
+    # --- Reproducibilidade e Splits ---
+    repro_group = parser.add_argument_group('Reproducibility & Splits')
+    repro_group.add_argument('--seed', type=int, default=0,
+                             help='Seed para reprodutibilidade (afeta numpy, torch, env)')
+    repro_group.add_argument('--split', type=str, default='train',
+                             choices=['train', 'test', 'all'],
+                             help='Subset de pistas: train (9), test (5) ou all (14). '
+                                  'Para o treino principal usar "train"; "test" só para sanity checks.')
+    repro_group.add_argument('--run-name', type=str, default=None,
+                             help='Nome do run (default: auto-gerado com timestamp)')
+    repro_group.add_argument('--clip-reward', type=float, default=50.0,
+                             help='Clip da reward normalizada no VecNormalize. '
+                                  'Default 50.0 (subido de 10.0 para não estrangular o lap bonus +200).')
+
     args = parser.parse_args()
+
+    # Aplicar seed globalmente
+    import random
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    try:
+        import torch
+        torch.manual_seed(args.seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(args.seed)
+    except ImportError:
+        pass
 
     if args.mode == 'custom':
         train_custom_sac(args)

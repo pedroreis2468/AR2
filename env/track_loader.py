@@ -18,14 +18,18 @@ _NON_CIRCUIT_TRACKS = {'skidpad', 'acceleration', 'gripMap'}
 class YAMLTrackLoader:
     """Carrega e converte pistas YAML para o formato do ambiente RL."""
 
-    def __init__(self, tracks_dir: str, exclude_non_circuits: bool = True):
+    def __init__(self, tracks_dir: str, exclude_non_circuits: bool = True,
+                 allowed_tracks: Optional[List[str]] = None):
         """
         Args:
             tracks_dir: Caminho para o diretório com ficheiros .yaml
             exclude_non_circuits: Se True, exclui skidpad/acceleration/gripMap
+            allowed_tracks: Se fornecido, restringe às pistas com estes nomes
+                (sem extensão). Útil para train/test splits.
         """
         self.tracks_dir = tracks_dir
         self.exclude_non_circuits = exclude_non_circuits
+        self.allowed_tracks = set(allowed_tracks) if allowed_tracks else None
         self._track_files: List[str] = []
         self._scan_tracks()
 
@@ -35,16 +39,23 @@ class YAMLTrackLoader:
         all_files = sorted(glob.glob(pattern))
 
         if self.exclude_non_circuits:
-            self._track_files = [
+            all_files = [
                 f for f in all_files
                 if os.path.splitext(os.path.basename(f))[0] not in _NON_CIRCUIT_TRACKS
             ]
-        else:
-            self._track_files = all_files
+
+        if self.allowed_tracks is not None:
+            all_files = [
+                f for f in all_files
+                if os.path.splitext(os.path.basename(f))[0] in self.allowed_tracks
+            ]
+
+        self._track_files = all_files
 
         if not self._track_files:
             raise FileNotFoundError(
-                f"Nenhuma pista YAML encontrada em: {self.tracks_dir}"
+                f"Nenhuma pista YAML encontrada em: {self.tracks_dir} "
+                f"(allowed_tracks={self.allowed_tracks})"
             )
 
     @property

@@ -3,9 +3,7 @@ __pycache__/
 *.pyo
 venv/
 .venv/
-runs/
 *.pt
-*.zip
 *.egg-info/
 dist/
 build/

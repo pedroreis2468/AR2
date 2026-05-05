@@ -58,6 +58,7 @@ class FSRacingEnv(gym.Env):
         action_repeat: int = 2,
         tracks_dir: str = None,
         track_name: Optional[str] = None,
+        allowed_tracks: Optional[list] = None,
         use_orange_cones: bool = True,
         cone_penalty_reward: float = -8.0,
         cone_penalty_seconds: float = 2.0,
@@ -98,7 +99,7 @@ class FSRacingEnv(gym.Env):
         self.boundary_sensor = BoundarySensor()
 
         if tracks_dir is not None:
-            self.track_loader = YAMLTrackLoader(tracks_dir)
+            self.track_loader = YAMLTrackLoader(tracks_dir, allowed_tracks=allowed_tracks)
             self._yaml_rng = np.random.RandomState(track_seed)
             self.track_gen = None
             print(f"[INFO] Carregadas {self.track_loader.n_tracks} pistas YAML: "
