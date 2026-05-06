@@ -68,6 +68,13 @@ class FSRacingEnv(gym.Env):
         oc_extreme_limit: float = 5.0,
         oc_time_limit: float = 2.0,
         max_laps: int = 1,
+        # --- Ablation flags (reward / sensor / dynamics) ---
+        use_alignment_reward: bool = True,
+        persistent_cone_knockdown: bool = True,
+        cone_fov: float = np.pi,        # default 180°
+        cone_max_range: float = 15.0,    # default 15m
+        sensor_noise: bool = True,       # default True (ruído gaussiano)
+        max_speed_override: Optional[float] = None,  # se dado, sobrescreve max_speed do veículo
     ):
         super().__init__()
         self.render_mode = render_mode
@@ -87,7 +94,15 @@ class FSRacingEnv(gym.Env):
         self.max_laps = max_laps
         self._oc_lateral_limit_override = oc_lateral_limit
 
+        # Ablation flags (defaults = comportamento normal)
+        self.use_alignment_reward = use_alignment_reward
+        self.persistent_cone_knockdown = persistent_cone_knockdown
+        self.sensor_noise = sensor_noise
+
         self.vehicle_params = vehicle_params or VehicleParams()
+        # Ablation: opcionalmente sobrescrever max_speed do veículo
+        if max_speed_override is not None:
+            self.vehicle_params.max_speed = float(max_speed_override)
         self.track_params = track_params or TrackParams()
         self.track_seed = track_seed
         self.tracks_dir = tracks_dir
@@ -95,7 +110,8 @@ class FSRacingEnv(gym.Env):
         self.current_track_name = track_name or ''
 
         self.car = KinematicBicycleModel(self.vehicle_params, dt)
-        self.cone_sensor = ConeSensor()
+        # Ablation: configurar ConeSensor com FOV e range customizáveis
+        self.cone_sensor = ConeSensor(max_range=cone_max_range, fov=cone_fov)
         self.boundary_sensor = BoundarySensor()
 
         if tracks_dir is not None:
@@ -242,7 +258,7 @@ class FSRacingEnv(gym.Env):
             blue_obs, yellow_obs, orange_obs, _ = self.cone_sensor.get_observations(
                 self.car.x, self.car.y, self.car.theta,
                 active_blue, active_yellow, active_orange,
-                add_noise=self.domain_randomization)
+                add_noise=(self.domain_randomization and self.sensor_noise))
             cone_obs = np.concatenate([
                 blue_obs.flatten() / self.cone_sensor.max_range,
                 yellow_obs.flatten() / self.cone_sensor.max_range,
@@ -252,7 +268,7 @@ class FSRacingEnv(gym.Env):
             blue_obs, yellow_obs, _, _ = self.cone_sensor.get_observations(
                 self.car.x, self.car.y, self.car.theta,
                 active_blue, active_yellow, np.zeros((0, 2)),
-                add_noise=self.domain_randomization)
+                add_noise=(self.domain_randomization and self.sensor_noise))
             cone_obs = np.concatenate([
                 blue_obs.flatten() / self.cone_sensor.max_range,
                 yellow_obs.flatten() / self.cone_sensor.max_range,
@@ -277,6 +293,10 @@ class FSRacingEnv(gym.Env):
             all_c, knocked = td['yellow_cones'], self.knocked_yellow
         else:
             all_c, knocked = td['orange_cones'], self.knocked_orange
+        # Ablação: se persistent_knockdown desligado, todos os cones permanecem
+        # visíveis ao sensor (mesmo após colisão).
+        if not self.persistent_cone_knockdown:
+            return all_c
         if not knocked:
             return all_c
         mask = np.ones(len(all_c), dtype=bool)
@@ -342,7 +362,10 @@ class FSRacingEnv(gym.Env):
         # Reward components (MEU shaping)
         r_progress = progress * 2.0
         v_norm = self.car.v / (self.vehicle_params.max_speed + 1e-6)
-        r_alignment = v_norm * float(np.cos(heading_err)) * 0.4
+        if self.use_alignment_reward:
+            r_alignment = v_norm * float(np.cos(heading_err)) * 0.4
+        else:
+            r_alignment = 0.0  # ablação: termo de alignment desligado
         steer_change = abs(float(action[0]) - float(self.prev_action[0]))
         r_smooth = -max(0.0, steer_change - 0.1) * 0.05
         lat_ratio = lateral_dist / (effective_hw + 1e-6)

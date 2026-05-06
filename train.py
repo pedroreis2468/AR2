@@ -227,15 +227,22 @@ def train_sb3(args):
     # Criar ambientes vetorizados
     def make_env(rank, seed=0):
         def _init():
+            import math
             env = FSRacingEnv(
                 randomize_track=True,
-                domain_randomization=True,
+                domain_randomization=not args.no_dr,
                 max_episode_steps=args.max_ep_steps,
                 terminate_on_cone=not args.no_terminate_on_cone,
                 track_seed=seed + rank,
                 tracks_dir=args.tracks_dir,
                 allowed_tracks=allowed_tracks,
                 use_orange_cones=not args.legacy_obs,
+                use_alignment_reward=not args.no_alignment,
+                persistent_cone_knockdown=not args.no_persistent_knockdown,
+                cone_fov=math.radians(args.cone_fov_deg),
+                cone_max_range=args.cone_range,
+                sensor_noise=not args.no_sensor_noise,
+                max_speed_override=args.max_speed,
             )
             env = Monitor(env, os.path.join(log_dir, f"monitor_{rank}"))
             return env
@@ -416,6 +423,26 @@ def main():
     repro_group.add_argument('--clip-reward', type=float, default=50.0,
                              help='Clip da reward normalizada no VecNormalize. '
                                   'Default 50.0 (subido de 10.0 para não estrangular o lap bonus +200).')
+
+    # --- Ablações ---
+    abl_group = parser.add_argument_group('Ablations')
+    abl_group.add_argument('--no-dr', action='store_true',
+                           help='Ablação: desligar domain randomization (massa, atrito, drag, '
+                                'posição/velocidade inicial, ruído do sensor).')
+    abl_group.add_argument('--no-alignment', action='store_true',
+                           help='Ablação: desligar termo r_alignment (v · cos(heading_err) × 0.4) '
+                                'da função de recompensa.')
+    abl_group.add_argument('--no-persistent-knockdown', action='store_true',
+                           help='Ablação: cones derrubados continuam visíveis ao sensor '
+                                '(em vez de desaparecerem persistentemente).')
+    abl_group.add_argument('--cone-fov-deg', type=float, default=180.0,
+                           help='FOV do sensor de cones em graus (default: 180).')
+    abl_group.add_argument('--cone-range', type=float, default=15.0,
+                           help='Alcance máximo do sensor de cones em metros (default: 15).')
+    abl_group.add_argument('--no-sensor-noise', action='store_true',
+                           help='Ablação: desligar ruído gaussiano do sensor de cones.')
+    abl_group.add_argument('--max-speed', type=float, default=None,
+                           help='Sobrescrever max_speed do veículo em m/s (default: usa o do VehicleParams).')
 
     args = parser.parse_args()
 
