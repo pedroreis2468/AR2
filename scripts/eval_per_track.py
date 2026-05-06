@@ -149,6 +149,10 @@ def main():
     parser.add_argument('--max-laps', type=int, default=1)
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--tracks-dir', type=str, default='tracks')
+    parser.add_argument('--tracks-list', nargs='+', default=None,
+                        help='Lista explicita de nomes de pistas (sem .yaml). '
+                             'Se dado, ignora --split. Util para avaliar em pistas '
+                             'fora dos splits originais (e.g. mirrored, extreme).')
     parser.add_argument('--legacy-obs', action='store_true')
     parser.add_argument('--no-randomization', action='store_true',
                         help='Desligar domain randomization na avaliação (por defeito está LIGADA '
@@ -179,7 +183,10 @@ def main():
         vecnorm.training = False
         vecnorm.norm_reward = False
 
-    if args.split == 'train':
+    if args.tracks_list:
+        # Lista explícita: ignora o split, usa as pistas dadas
+        tracks = args.tracks_list
+    elif args.split == 'train':
         tracks = TRAIN_TRACKS
     elif args.split == 'test':
         tracks = TEST_TRACKS
