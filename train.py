@@ -243,6 +243,7 @@ def train_sb3(args):
                 cone_max_range=args.cone_range,
                 sensor_noise=not args.no_sensor_noise,
                 max_speed_override=args.max_speed,
+                mirror_augment=args.mirror_augment,
             )
             env = Monitor(env, os.path.join(log_dir, f"monitor_{rank}"))
             return env
@@ -443,6 +444,9 @@ def main():
                            help='Ablação: desligar ruído gaussiano do sensor de cones.')
     abl_group.add_argument('--max-speed', type=float, default=None,
                            help='Sobrescrever max_speed do veículo em m/s (default: usa o do VehicleParams).')
+    abl_group.add_argument('--mirror-augment', action='store_true',
+                           help='Data augmentation: 50%% das pistas carregadas são espelhadas em Y. '
+                                'Trata viés direcional sem alterar a função de recompensa.')
 
     args = parser.parse_args()
 

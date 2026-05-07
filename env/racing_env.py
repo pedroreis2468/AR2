@@ -75,6 +75,7 @@ class FSRacingEnv(gym.Env):
         cone_max_range: float = 15.0,    # default 15m
         sensor_noise: bool = True,       # default True (ruído gaussiano)
         max_speed_override: Optional[float] = None,  # se dado, sobrescreve max_speed do veículo
+        mirror_augment: bool = False,    # data augmentation: espelha pista em Y aleatoriamente
     ):
         super().__init__()
         self.render_mode = render_mode
@@ -98,6 +99,7 @@ class FSRacingEnv(gym.Env):
         self.use_alignment_reward = use_alignment_reward
         self.persistent_cone_knockdown = persistent_cone_knockdown
         self.sensor_noise = sensor_noise
+        self.mirror_augment = mirror_augment
 
         self.vehicle_params = vehicle_params or VehicleParams()
         # Ablation: opcionalmente sobrescrever max_speed do veículo
@@ -153,6 +155,66 @@ class FSRacingEnv(gym.Env):
 
     # ─── Reset ───────────────────────────────────────────────────────────
 
+    @staticmethod
+    def _mirror_track_data(td):
+        """
+        Aplica espelhamento em Y a um track_data dict, devolvendo um NOVO dict.
+        Não muta o original (importante porque o loader pode reutilizar referências).
+
+        Operação:
+        - Negar coordenada Y de todas as posições
+        - Trocar blue ↔ yellow (porque o que era esquerda fica direita)
+        - Trocar left_boundary ↔ right_boundary
+        - Recalcular tangentes e normais a partir da nova centerline
+        - Negar start_heading
+        """
+        td_new = dict(td)  # cópia rasa
+        # Centerline
+        cl = td['centerline'].copy()
+        cl[:, 1] *= -1
+        td_new['centerline'] = cl
+        # Cones azuis e amarelos: negar Y, trocar
+        blue = td['blue_cones'].copy()
+        yellow = td['yellow_cones'].copy()
+        if len(blue) > 0:  blue[:, 1]  *= -1
+        if len(yellow) > 0: yellow[:, 1] *= -1
+        td_new['blue_cones'] = yellow   # original right (yellow) → mirrored left (blue)
+        td_new['yellow_cones'] = blue   # original left (blue) → mirrored right (yellow)
+        # Cones laranja: só negar Y
+        if 'orange_cones' in td and len(td['orange_cones']) > 0:
+            oc = td['orange_cones'].copy()
+            oc[:, 1] *= -1
+            td_new['orange_cones'] = oc
+        # Boundaries: trocar e negar Y
+        if 'left_boundary' in td and 'right_boundary' in td:
+            lb = td['left_boundary'].copy()
+            rb = td['right_boundary'].copy()
+            lb[:, 1] *= -1
+            rb[:, 1] *= -1
+            td_new['left_boundary'] = rb
+            td_new['right_boundary'] = lb
+        # Start
+        sp = td['start_pos'].copy()
+        sp[1] *= -1
+        td_new['start_pos'] = sp
+        td_new['start_heading'] = -float(td['start_heading'])
+        # Re-computar tangentes e normais da centerline espelhada
+        # (não basta negar a Y das tangentes/normais antigas — os normais mudam de sentido
+        #  porque "esquerda" relativa à direção de marcha é o lado oposto após mirror)
+        n = len(cl)
+        tangents = np.zeros_like(cl)
+        normals = np.zeros_like(cl)
+        for i in range(n):
+            t = cl[(i + 1) % n] - cl[(i - 1) % n]
+            mag = np.sqrt(t[0]**2 + t[1]**2)
+            if mag > 1e-10:
+                t /= mag
+            tangents[i] = t
+            normals[i] = np.array([-t[1], t[0]])  # rotação 90° CCW
+        td_new['tangents'] = tangents
+        td_new['normals'] = normals
+        return td_new
+
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
 
@@ -169,6 +231,12 @@ class FSRacingEnv(gym.Env):
                     self.track_gen.rng = np.random.RandomState(seed)
                 self.track_data = self.track_gen.generate()
                 self.current_track_name = 'procedural'
+
+            # Mirror augmentation: 50% chance de espelhar a pista em Y
+            # (corre apenas quando uma nova pista é carregada).
+            if self.mirror_augment and np.random.random() < 0.5:
+                self.track_data = self._mirror_track_data(self.track_data)
+                self.current_track_name = self.current_track_name + '_M'
 
         td = self.track_data
         start_offset = 0.0
