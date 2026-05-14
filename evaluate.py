@@ -18,14 +18,24 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from env.racing_env import FSRacingEnv
 
 
-def evaluate_custom(args):
-    """Avalia agente SAC custom."""
-    from agent.sac import SACAgent
+def _make_env(args):
+    """
+    Constrói o env de avaliação consoante args.env.
 
-    env = FSRacingEnv(
+    PacSim exige ROS 2 sourced e PacSim a correr; falha com mensagem útil.
+    """
+    if args.env == 'pacsim':
+        from env.pacsim_env import PacSimEnv
+        return PacSimEnv(
+            use_orange_cones=not args.legacy_obs,
+            max_episode_steps=args.max_steps,
+            startup_timeout=args.pacsim_startup_timeout,
+            step_timeout=args.pacsim_step_timeout,
+        )
+    return FSRacingEnv(
         render_mode='human',
-        randomize_track=True,
-        domain_randomization=True,
+        randomize_track=(args.track is None),
+        domain_randomization=False,
         max_episode_steps=args.max_steps,
         tracks_dir=args.tracks_dir,
         track_name=args.track,
@@ -34,6 +44,20 @@ def evaluate_custom(args):
         doo_cone_limit=999,
         max_laps=args.max_laps,
     )
+
+
+def _maybe_render(env, args):
+    """Render só faz sentido na FSRacingEnv (PyGame). PacSim é via Foxglove."""
+    if args.env == 'fs':
+        return env.render()
+    return True
+
+
+def evaluate_custom(args):
+    """Avalia agente SAC custom."""
+    from agent.sac import SACAgent
+
+    env = _make_env(args)
 
     agent = SACAgent(
         obs_dim=env.observation_space.shape[0],
@@ -52,14 +76,14 @@ def evaluate_custom(args):
             obs, reward, terminated, truncated, info = env.step(action)
             done = terminated or truncated
             total_reward += reward
-            env.render()
+            _maybe_render(env, args)
 
         print(
             f"Ep {ep+1}/{args.n_episodes} | "
             f"Reward: {total_reward:.1f} | "
-            f"Steps: {info['step']} | "
-            f"Progress: {info['total_progress']:.1f}m | "
-            f"Laps: {info['laps_completed']} | "
+            f"Steps: {info.get('step', 0)} | "
+            f"Progress: {info.get('total_progress', 0):.1f}m | "
+            f"Laps: {info.get('laps_completed', 0)} | "
             f"Cones: {info.get('cones_hit', 0)}"
         )
         if terminated:
@@ -82,19 +106,7 @@ def evaluate_sb3(args):
         print("[ERRO] stable-baselines3 não instalado!")
         return
 
-    # Criar env direto (sem VecEnv) para controlar reset e render manualmente
-    env = FSRacingEnv(
-        render_mode='human',
-        randomize_track=(args.track is None),
-        domain_randomization=False,
-        max_episode_steps=args.max_steps,
-        tracks_dir=args.tracks_dir,
-        track_name=args.track,
-        use_orange_cones=not args.legacy_obs,
-        terminate_on_cone=False,
-        doo_cone_limit=999,
-        max_laps=args.max_laps,
-    )
+    env = _make_env(args)
 
     # Carregar modelo (norm_obs=False no treino, não precisa de VecNormalize)
     model_path = args.model
@@ -104,8 +116,10 @@ def evaluate_sb3(args):
         model = SAC.load(model_path, device=args.device)
 
     print(f"\n[INFO] Modelo: {args.model}")
-    print(f"[INFO] Pista: {args.track or 'aleatória'}")
-    print(f"[INFO] Max voltas: {args.max_laps}")
+    print(f"[INFO] Env: {args.env}")
+    if args.env == 'fs':
+        print(f"[INFO] Pista: {args.track or 'aleatória'}")
+        print(f"[INFO] Max voltas: {args.max_laps}")
     print(f"[INFO] Episódios: {args.n_episodes}\n")
     print(f"{'Ep':>4} {'Reward':>8} {'Steps':>6} {'Progress':>10} {'Speed':>8} {'Laps':>5}")
     print('-' * 60)
@@ -125,7 +139,7 @@ def evaluate_sb3(args):
             done = terminated or truncated
             total_reward += reward
             step += 1
-            env.render()
+            _maybe_render(env, args)
 
         total_rewards.append(total_reward)
         print(
@@ -153,21 +167,11 @@ def evaluate_sb3(args):
 
 def evaluate_random(args):
     """Corre o ambiente com ações aleatórias (para teste)."""
-    env = FSRacingEnv(
-        render_mode='human',
-        randomize_track=True,
-        domain_randomization=False,
-        max_episode_steps=args.max_steps,
-        tracks_dir=args.tracks_dir,
-        track_name=args.track,
-        use_orange_cones=not args.legacy_obs,
-        terminate_on_cone=False,
-        doo_cone_limit=999,
-        max_laps=args.max_laps,
-    )
+    env = _make_env(args)
 
-    print("\n[INFO] A correr agente ALEATÓRIO para testar o ambiente...")
-    print("[INFO] Fechar a janela ou Ctrl+C para sair.\n")
+    print(f"\n[INFO] A correr agente ALEATÓRIO no env '{args.env}'...")
+    if args.env == 'fs':
+        print("[INFO] Fechar a janela ou Ctrl+C para sair.\n")
 
     for ep in range(args.n_episodes):
         obs, info = env.reset(seed=args.seed + ep if args.seed else None)
@@ -177,7 +181,6 @@ def evaluate_random(args):
 
         while not done:
             action = env.action_space.sample()
-            # Bias ligeiro para a frente
             action[1] = np.clip(action[1] + 0.3, -1, 1)
 
             obs, reward, terminated, truncated, info = env.step(action)
@@ -185,16 +188,17 @@ def evaluate_random(args):
             total_reward += reward
             step += 1
 
-            result = env.render()
-            if result is None:  # janela fechada
-                env.close()
-                return
+            if args.env == 'fs':
+                result = env.render()
+                if result is None:  # janela fechada
+                    env.close()
+                    return
 
         print(
             f"Ep {ep+1}/{args.n_episodes} | "
             f"Reward: {total_reward:.1f} | "
             f"Steps: {step} | "
-            f"Progress: {info['total_progress']:.1f}m | "
+            f"Progress: {info.get('total_progress', 0):.1f}m | "
             f"Cones: {info.get('cones_hit', 0)}"
         )
         if terminated:
@@ -236,6 +240,13 @@ def main():
                         help='Número máximo de voltas antes de terminar (default: 1)')
     parser.add_argument('--vecnormalize', type=str, default=None,
                         help='Caminho para vecnormalize.pkl (auto-detectado se na mesma pasta do modelo)')
+    parser.add_argument('--env', type=str, default='fs',
+                        choices=['fs', 'pacsim'],
+                        help='Ambiente: fs (2D, default) ou pacsim (3D via ROS 2)')
+    parser.add_argument('--pacsim-startup-timeout', type=float, default=15.0,
+                        help='Timeout (s) à espera da primeira perceção do PacSim')
+    parser.add_argument('--pacsim-step-timeout', type=float, default=1.0,
+                        help='Timeout (s) por step à espera de perceção fresca')
 
     args = parser.parse_args()
 

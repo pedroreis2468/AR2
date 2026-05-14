@@ -340,6 +340,10 @@ class PacSimEnv(gym.Env):
             self._executor.shutdown(timeout_sec=0.5)
         except Exception:
             pass
+        # Esperar a spin thread sair antes de destruir o nó — evita warnings
+        # "cannot use Destroyable" quando callbacks ainda estão em flight.
+        if hasattr(self, '_spin_thread'):
+            self._spin_thread.join(timeout=1.0)
         try:
             self._node.destroy_node()
         except Exception:
