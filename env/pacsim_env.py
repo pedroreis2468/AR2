@@ -16,7 +16,7 @@ Tópicos:
         /pacsim/velocity            geometry_msgs/TwistWithCovarianceStamped
         /pacsim/imu/cog_imu         sensor_msgs/Imu
         /pacsim/steeringFront       pacsim/StampedScalar
-        /pacsim/perception/livox_front
+        /pacsim/perception/livox_front/landmarks
                                     pacsim/PerceptionDetections
     Publish
         /pacsim/steering_setpoint   pacsim/StampedScalar
@@ -35,6 +35,7 @@ Sincronização step() ↔ ROS:
 from __future__ import annotations
 
 import threading
+import time
 from dataclasses import dataclass
 from typing import Optional
 
@@ -164,9 +165,11 @@ class _PacSimBridgeNode(Node):
         cones = []
         for lm in msg.detections:
             probs = lm.class_probabilities
-            if not probs:
+            # probs vem como numpy array de tamanho fixo — len() evita o
+            # `ValueError: truth value of an array … is ambiguous`.
+            if len(probs) == 0:
                 continue
-            cls = int(max(range(len(probs)), key=lambda i: probs[i]))
+            cls = int(np.argmax(probs))
             cones.append((
                 float(lm.pose.pose.position.x),
                 float(lm.pose.pose.position.y),
@@ -195,24 +198,25 @@ class _PacSimBridgeNode(Node):
         t: RclTime = self.get_clock().now()
         return int(t.nanoseconds)
 
-    def wait_perception_after(self, ref_ns: int, timeout_s: float) -> bool:
+    def wait_next_perception(self, last_stamp_ns: int, timeout_s: float) -> bool:
         """
-        Bloqueia até chegar uma perceção com stamp > ref_ns.
+        Bloqueia até chegar uma perceção com stamp > last_stamp_ns.
 
-        Implementado por busy-wait sobre `threading.Event` curto, porque
-        callbacks chegam em outras threads e o Event pode ser sinalizado
-        por mensagens antigas (já vistas).
+        Comparamos *stamps de mensagens entre si* (monotónico, vem todo da
+        mesma fonte de tempo do PacSim), em vez de comparar contra
+        `node.now_ns()`. Assim funciona quer o publisher use wall-clock,
+        quer use sim-time (`use_sim_time:=true` com /clock).
         """
-        deadline = self.now_ns() + int(timeout_s * 1_000_000_000)
+        deadline = time.monotonic() + timeout_s
         while True:
             with self._lock:
-                if self._state.perception_stamp_ns > ref_ns:
+                if self._state.perception_stamp_ns > last_stamp_ns:
                     return True
-            remaining_ns = deadline - self.now_ns()
-            if remaining_ns <= 0:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0.0:
                 return False
             self._perception_event.clear()
-            self._perception_event.wait(timeout=min(remaining_ns / 1e9, 0.05))
+            self._perception_event.wait(timeout=min(remaining, 0.05))
 
     def publish_action(self, steering_norm: float, throttle_norm: float):
         stamp = self.get_clock().now().to_msg()
@@ -253,7 +257,7 @@ class PacSimEnv(gym.Env):
 
     def __init__(
         self,
-        perception_topic: str = '/pacsim/perception/livox_front',
+        perception_topic: str = '/pacsim/perception/livox_front/landmarks',
         step_timeout: float = 1.0,
         startup_timeout: float = 15.0,
         use_orange_cones: bool = True,
@@ -290,7 +294,8 @@ class PacSimEnv(gym.Env):
 
         self._step_count = 0
         print('[PacSimEnv] À espera da primeira perceção do PacSim…')
-        got = self._node.wait_perception_after(ref_ns=0, timeout_s=startup_timeout)
+        got = self._node.wait_next_perception(
+            last_stamp_ns=0, timeout_s=startup_timeout)
         if not got:
             self.close()
             raise TimeoutError(
@@ -304,19 +309,20 @@ class PacSimEnv(gym.Env):
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
         self._step_count = 0
+        last_stamp = self._node.snapshot().perception_stamp_ns
         # Comando neutro para "parar" o carro entre episódios.
         self._node.publish_action(0.0, 0.0)
-        self._node.wait_perception_after(
-            ref_ns=self._node.now_ns(), timeout_s=self.step_timeout)
+        self._node.wait_next_perception(
+            last_stamp_ns=last_stamp, timeout_s=self.step_timeout)
         return self._build_observation(), self._build_info()
 
     def step(self, action):
         action = np.clip(np.asarray(action, dtype=np.float32), -1.0, 1.0)
-        cmd_stamp_ns = self._node.now_ns()
+        last_stamp = self._node.snapshot().perception_stamp_ns
         self._node.publish_action(float(action[0]), float(action[1]))
 
-        fresh = self._node.wait_perception_after(
-            ref_ns=cmd_stamp_ns, timeout_s=self.step_timeout)
+        fresh = self._node.wait_next_perception(
+            last_stamp_ns=last_stamp, timeout_s=self.step_timeout)
 
         self._step_count += 1
         truncated = self._step_count >= self.max_episode_steps
