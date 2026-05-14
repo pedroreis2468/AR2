@@ -20,8 +20,8 @@ Tópicos:
                                     pacsim/PerceptionDetections
     Publish
         /pacsim/steering_setpoint   pacsim/StampedScalar
-        /pacsim/wheelspeed_setpoints
-                                    pacsim/Wheels
+        /pacsim/torques_max         pacsim/Wheels  (envelope superior, accel)
+        /pacsim/torques_min         pacsim/Wheels  (envelope inferior, brake)
 
 Sincronização step() ↔ ROS:
     O nó rclpy gira numa thread daemon (MultiThreadedExecutor). O step()
@@ -82,6 +82,15 @@ _WHEEL_RADIUS = 0.206
 _CONE_MAX_RANGE = 15.0
 _N_CONES_PER_COLOR = 3
 
+# ── Actuação (PacSim) ──────────────────────────────────────────────────────
+# example.launch.py não inclui controlador de velocidade — temos de actuar
+# directamente por envelope de torque (torques_max / torques_min). throttle ∈
+# [-1,1] mapeia para envelope: throttle>0 abre só o lado positivo (acel),
+# throttle<0 abre só o lado negativo (travão). 12 Nm por roda é o valor que
+# experimentalmente dá ~max_accel do FSRacingEnv sem saturação imediata.
+_MAX_TORQUE_ACCEL = 12.0   # Nm por roda no envelope superior
+_MAX_TORQUE_BRAKE = 12.0   # Nm por roda no envelope inferior
+
 # ── Classes da Landmark.msg do PacSim ──────────────────────────────────────
 _CLS_BLUE = 2
 _CLS_YELLOW = 3
@@ -141,8 +150,12 @@ class _PacSimBridgeNode(Node):
         )
         self._pub_steer = self.create_publisher(
             StampedScalar, '/pacsim/steering_setpoint', cmd_qos)
-        self._pub_wheels = self.create_publisher(
-            Wheels, '/pacsim/wheelspeed_setpoints', cmd_qos)
+        # Actuação real: envelope de torque por roda. wheelspeed_setpoints é
+        # ignorado pelo example.launch.py do PacSim porque não há controlador.
+        self._pub_torques_max = self.create_publisher(
+            Wheels, '/pacsim/torques_max', cmd_qos)
+        self._pub_torques_min = self.create_publisher(
+            Wheels, '/pacsim/torques_min', cmd_qos)
 
     # ── Callbacks ───────────────────────────────────────────────────────
 
@@ -226,19 +239,28 @@ class _PacSimBridgeNode(Node):
         steer.value = float(np.clip(steering_norm, -1.0, 1.0) * _MAX_STEERING)
         self._pub_steer.publish(steer)
 
-        # throttle_norm ∈ [-1, 1]. Negativo = travão. PacSim não tem tópico
-        # de brake dedicado neste setup; mapeamos travão para velocidade-alvo
-        # nula (coast) — o veículo desacelera naturalmente.
-        target_speed = max(0.0, float(throttle_norm)) * _MAX_SPEED
-        wheel_rate = target_speed / _WHEEL_RADIUS
+        # throttle_norm ∈ [-1, 1]:
+        #   > 0 → envelope superior abre proporcionalmente; inferior = 0.
+        #   < 0 → envelope inferior abre proporcionalmente (negativo = travão).
+        #   = 0 → ambos a zero (coast).
+        # O motor controller interno do PacSim aplica torque dentro do envelope.
+        t = float(np.clip(throttle_norm, -1.0, 1.0))
+        if t >= 0.0:
+            tmax = t * _MAX_TORQUE_ACCEL
+            tmin = 0.0
+        else:
+            tmax = 0.0
+            tmin = t * _MAX_TORQUE_BRAKE   # já negativo
 
-        wheels = Wheels()
-        wheels.stamp = stamp
-        wheels.fl = wheel_rate
-        wheels.fr = wheel_rate
-        wheels.rl = wheel_rate
-        wheels.rr = wheel_rate
-        self._pub_wheels.publish(wheels)
+        wmax = Wheels()
+        wmax.stamp = stamp
+        wmax.fl = wmax.fr = wmax.rl = wmax.rr = tmax
+        self._pub_torques_max.publish(wmax)
+
+        wmin = Wheels()
+        wmin.stamp = stamp
+        wmin.fl = wmin.fr = wmin.rl = wmin.rr = tmin
+        self._pub_torques_min.publish(wmin)
 
 
 class PacSimEnv(gym.Env):
