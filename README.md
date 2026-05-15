@@ -3,143 +3,198 @@
 ![Python](https://img.shields.io/badge/Python-3.11-blue)
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-red)
 ![Gymnasium](https://img.shields.io/badge/Gymnasium-0.29+-green)
-![SAC](https://img.shields.io/badge/Algorithm-SAC-orange)
+![SB3](https://img.shields.io/badge/Stable--Baselines3-2.1+-purple)
+![Algorithms](https://img.shields.io/badge/Algorithms-SAC%20%7C%20PPO-orange)
 ![License](https://img.shields.io/badge/License-Academic-lightgrey)
 
-> **Aprendizagem por Reforço** | Mestrado em Inteligência Artificial | Universidade do Minho | 2025/26
+> **Aprendizagem por Reforço** · Mestrado em Inteligência Artificial · Universidade do Minho · 2025/26
 
-Agente de Reinforcement Learning que aprende a conduzir um carro de Formula Student Driverless numa pista delimitada por cones, seguindo as regras oficiais da competição **FS-AI**. O ambiente 2D simula sensores, física cinemática e penalizações realistas, treinando com pistas reais de competição em formato YAML.
+Agente de Reinforcement Learning que aprende a conduzir um carro de Formula Student Driverless em pistas delimitadas por cones, seguindo as regras oficiais **FS-AI**. O ambiente 2D simula sensores de perceção, física cinemática e penalizações realistas, treinando com **14 pistas reais de competição** em formato YAML.
+
+---
+
+## 📊 Resultados (TL;DR)
+
+Comparação entre os melhores modelos no test split FS-AI (5 pistas inéditas, 10 episódios por pista, política determinística, com domain randomization).
+
+| Modelo                | Lap rate | Cones derrubados | Velocidade |
+|-----------------------|---------:|-----------------:|-----------:|
+| **SAC** (3M, 3 seeds) | **66%**  | 2.4              | 76 km/h    |
+| PPO (6M, 3 seeds)     | 68%      | 4.8              | 79 km/h    |
+| **SAC + Mirror Aug.** | **72%**  | **2.9**          | 67 km/h    |
+
+**Principais descobertas:**
+
+- ✅ **SAC supera PPO em consistência** (3× menos cones derrubados) apesar de PPO ter ligeiramente mais lap rate em algumas seeds
+- 🔍 **Identificámos viés direcional** via avaliação em pistas espelhadas: lap rate cai de 66% → 40% (SAC) e 68% → 45% (PPO)
+- 🎯 **Mirror augmentation** elimina o viés (74% em espelhadas) e melhora generalização global (+6pp em pistas originais)
 
 ---
 
 ## 🎯 Objetivos
 
-* Treinar um agente SAC capaz de completar voltas em pistas FS sem derrubar cones.
-* Implementar regras FS-AI realistas: penalizações por cone (+2s), DOO, off-course gradual.
-* Suportar pistas reais de competição (FSG19, FSE22, FSE24, etc.) via ficheiros YAML.
-* Transferir políticas treinadas para o simulador 3D PacSim (objetivo exploratório).
+- Treinar um agente SAC/PPO capaz de completar voltas em pistas FS sem derrubar cones
+- Implementar regras FS-AI realistas: penalizações por cone (+2s), DOO, off-course gradual
+- Suportar pistas reais de competição (FSG19, FSE22, FSE24, etc.) via ficheiros YAML
+- **Avaliar generalização** via splits canónicos + pistas espelhadas (held-out)
 
 ---
 
 ## 🏗️ Arquitetura
 
-                    ┌─────────────────┐
-                    │   train.py      │  SAC custom ou SB3
-                    │   evaluate.py   │  Avaliação + visualização
-                    └────────┬────────┘
-                             │
-                    ┌────────▼────────┐
-                    │  FSRacingEnv    │  Gymnasium environment
-                    │  (racing_env)   │
-                    └──┬─────┬─────┬──┘
-                       │     │     │
-              ┌────────▼┐ ┌──▼───┐ ┌▼──────────┐
-              │ CarModel│ │Sensor│ │TrackLoader │
-              │ (bicicl)│ │(cone)│ │ (YAML/proc)│
-              └─────────┘ └──────┘ └────────────┘
+```
+       ┌─────────────────┐
+       │   train.py      │  SB3 SAC/PPO
+       │   evaluate.py   │  Avaliação + visualização PyGame
+       └────────┬────────┘
+                │
+       ┌────────▼────────┐
+       │  FSRacingEnv    │  Gymnasium environment
+       │  (racing_env)   │
+       └──┬─────┬─────┬──┘
+          │     │     │
+ ┌────────▼┐ ┌──▼───┐ ┌▼──────────┐
+ │ CarModel│ │Sensor│ │TrackLoader │
+ │ (bicicl)│ │(cone)│ │ (YAML/proc)│
+ └─────────┘ └──────┘ └────────────┘
+```
 
-### Componentes
+### Componentes principais
 
-| Componente | Ficheiro | Descrição |
-|-----------|----------|-----------|
-| **FSRacingEnv** | env/racing_env.py | Ambiente Gymnasium — observação, reward, FS-AI rules |
-| **KinematicBicycleModel** | env/car_model.py | Modelo cinemático de bicicleta (250kg, slicks) |
-| **ConeSensor** | env/cone_sensor.py | Perceção de cones no ref. do carro (simula YOLO+depth) |
-| **YAMLTrackLoader** | env/track_loader.py | Carrega pistas reais de competição FS |
-| **TrackGenerator** | env/track_generator.py | Gerador procedural de pistas (fallback) |
-| **FSRenderer** | env/renderer.py | Visualização PyGame em tempo real |
-| **SACAgent** | agent/sac.py | Soft Actor-Critic custom (PyTorch) |
-| **Networks** | agent/networks.py | Gaussian Actor + Twin Q-Networks |
+| Componente               | Ficheiro                  | Descrição                                          |
+|--------------------------|---------------------------|----------------------------------------------------|
+| **FSRacingEnv**          | `env/racing_env.py`       | Ambiente Gymnasium — observação, reward, FS-AI    |
+| **KinematicBicycleModel**| `env/car_model.py`        | Modelo cinemático de bicicleta (250kg, slicks)    |
+| **ConeSensor**           | `env/cone_sensor.py`      | Perceção de cones no ref. do carro (FOV/range)    |
+| **YAMLTrackLoader**      | `env/track_loader.py`     | Carrega pistas reais FS via YAML                   |
+| **TrackGenerator**       | `env/track_generator.py`  | Gerador procedural de pistas (fallback)            |
+| **FSRenderer**           | `env/renderer.py`         | Visualização PyGame em tempo real                  |
+| **track_splits.py**      | `env/track_splits.py`     | Split canónico train (9) / test (5)                |
+
+### Scripts auxiliares (`scripts/`)
+
+| Script                          | Função                                                       |
+|---------------------------------|--------------------------------------------------------------|
+| `eval_per_track.py`             | Avaliação per-pista (gera CSV + tabela LaTeX)               |
+| `plot_learning_curves.py`       | Curvas de aprendizagem agregadas (SAC vs PPO)                |
+| `mirror_tracks.py`              | Espelha pistas em Y (gera test held-out de viés direcional) |
+| `debug_reward.py`               | Debug dos componentes da recompensa                          |
+| `test_steering.py`              | Teste de inferência de ações                                 |
+| `run_pacsim_viz.sh` + `test_pacsim_*.py` | Exploração sim-to-sim com PacSim 3D                 |
 
 ---
 
 ## 🔧 Regras FS-AI Implementadas
 
-| Regra | Implementação |
-|-------|--------------|
-| 🔵 Cones azuis (esquerda) | Fronteira esquerda da pista |
-| 🟡 Cones amarelos (direita) | Fronteira direita da pista |
-| 🟠 Cones laranja (start/finish) | Penalidade agravada (×2) |
-| Cone derrubado | **+2s penalização** (não termina episódio) |
-| Cone derrubado — perceção | **Removido do FOV** (persistent knockdown) |
-| DOO: ≥10 cones | Terminação imediata |
-| DOO: off-course >5m | Terminação imediata |
-| DOO: off-course >2s | Terminação imediata |
-| Off-course gradual | Penalização quadrática progressiva |
-| Volta completa | Bónus 200 - cones×5 |
+| Regra                              | Implementação                                  |
+|------------------------------------|------------------------------------------------|
+| 🔵 Cones azuis (esquerda)          | Fronteira esquerda da pista                    |
+| 🟡 Cones amarelos (direita)        | Fronteira direita da pista                     |
+| 🟠 Cones laranja (start/finish)    | Penalidade agravada (×2)                       |
+| Cone derrubado                     | **+2s** penalização (não termina episódio)     |
+| Cone derrubado — perceção          | **Removido do FOV** (persistent knockdown)     |
+| DOO: ≥10 cones                     | Terminação imediata                            |
+| DOO: off-course >5m                | Terminação imediata                            |
+| DOO: off-course >2s                | Terminação imediata                            |
+| Off-course gradual                 | Penalização quadrática progressiva             |
+| Volta completa                     | Bónus +200 − cones×5                           |
 
 ---
 
 ## 👁️ Espaço de Observação (24 dims)
 
-> **Nota:** O agente é avaliado estritamente pela sua perceção local (visão dos cones), sem acesso à *centerline* ideal ("GPS Mágico"). O planeamento global emerge do comportamento reativo!
+> **Nota:** O agente é avaliado estritamente pela sua perceção local (visão dos cones), sem acesso à *centerline* ideal. O planeamento global emerge do comportamento reativo.
 
-| Índices | Componente | Descrição |
-|:-------:|-----------|-----------|
-| 0 | vx | Velocidade longitudinal normalizada |
-| 1 | vy | Velocidade lateral normalizada |
-| 2 | ω | Yaw rate normalizado |
-| 3 | δ | Ângulo de steering normalizado |
-| 4 | ax | Aceleração longitudinal normalizada |
-| 5 | ay | Aceleração lateral normalizada |
-| 6–11 | blue_cones | 3 cones azuis mais próximos (x, y) no ref. do carro |
-| 12–17 | yellow_cones | 3 cones amarelos mais próximos (x, y) |
-| 18–23 | orange_cones | 3 cones laranja mais próximos (x, y) |
+| Índices | Componente   | Descrição                                        |
+|---------|--------------|--------------------------------------------------|
+| 0       | vx           | Velocidade longitudinal normalizada              |
+| 1       | vy           | Velocidade lateral normalizada                   |
+| 2       | ω            | Yaw rate normalizado                             |
+| 3       | δ            | Ângulo de steering normalizado                   |
+| 4       | ax           | Aceleração longitudinal normalizada              |
+| 5       | ay           | Aceleração lateral normalizada                   |
+| 6–11    | blue_cones   | 3 cones azuis mais próximos (x, y) no ref. carro |
+| 12–17   | yellow_cones | 3 cones amarelos mais próximos (x, y)            |
+| 18–23   | orange_cones | 3 cones laranja mais próximos (x, y)             |
 
-> A flag --legacy-obs reduz para 18 dims (sem cones laranja) para compatibilidade com modelos antigos.
+> A flag `--legacy-obs` reduz para 18 dims (sem cones laranja) para compatibilidade com modelos antigos.
 
 ---
 
 ## 🎁 Reward Shaping
 
-| Componente | Peso | Descrição |
-|-----------|:----:|-----------|
-| r_progress | ×2.0 | Distância percorrida ao longo da centerline ideal (com sinal) |
-| r_alignment | ×0.4 | v × cos(heading_error) — andar rápido E alinhado com a pista |
-| r_smooth | ×0.05 | Penaliza mudanças de steering > dead-band de 0.1 |
-| r_lateral | ×0.08 | Linear dentro da pista, quadrática fora |
-| r_time | -0.005 | Custo fixo por step (encorajar velocidade) |
-| cone_hit | -8.0 | Por cone azul/amarelo derrubado |
-| orange_hit | -16.0 | Por cone laranja derrubado |
-| off-course | quad. | Penalização progressiva fora dos limites |
-| stagnation | -5.0 | Se <2m de progresso em 300 steps → DOO |
+| Componente   | Peso      | Descrição                                                     |
+|--------------|-----------|---------------------------------------------------------------|
+| `r_progress` | ×2.0      | Distância percorrida ao longo da centerline ideal (com sinal) |
+| `r_alignment`| ×0.4      | v × cos(heading_error) — andar rápido E alinhado              |
+| `r_smooth`   | ×0.05     | Penaliza mudanças de steering > dead-band de 0.1              |
+| `r_lateral`  | ×0.08     | Linear dentro da pista, quadrática fora                       |
+| `r_time`     | −0.005    | Custo fixo por step (encorajar velocidade)                    |
+| `cone_hit`   | −8.0      | Por cone azul/amarelo derrubado                               |
+| `orange_hit` | −16.0     | Por cone laranja derrubado                                    |
+| `off-course` | quad.     | Penalização progressiva fora dos limites                      |
+| `stagnation` | −5.0      | Se <2m de progresso em 300 steps → DOO                        |
+| `lap_bonus`  | +200      | Por volta completa (descontado pelos cones)                   |
+
+---
+
+## 🔬 Protocolo Experimental
+
+### Splits canónicos (`env/track_splits.py`)
+
+| Split  | N° pistas | Pistas                                                                |
+|--------|-----------|-----------------------------------------------------------------------|
+| Train  | 9         | FSG19, FSG21, FSG23, FSE22, FSE22_test, FSE23, FSO20, FSS19, FSS22_V1 |
+| Test   | 5         | FSG24, FSI24, FSCZ24, FSE24, FSS22_V2                                 |
+| Mirror | 14        | Versões espelhadas em Y (held-out para viés direcional)               |
+
+### Modelos treinados
+
+| Família       | Algoritmo | Steps | Seeds | Observações                          |
+|---------------|-----------|-------|-------|--------------------------------------|
+| Baseline      | SAC       | 3M    | 3     | `runs/sac_seed{0,1,2}`               |
+| Baseline      | PPO       | 6M    | 3     | `runs/ppo_seed{0,1,2}`               |
+| Ablações      | SAC       | 2M    | 1     | 15 variantes (`runs/abl_sac_*`)      |
+| Mirror Aug.   | SAC       | 3M    | 1     | `runs/sac_mirror_aug`                |
+
+### Ablações realizadas
+
+- **Recompensa**: `--no-alignment`, `--no-persistent-knockdown`
+- **Domain Randomization**: `--no-dr`
+- **Sensor**: `--no-sensor-noise`, `--cone-fov-deg {90, 360}`, `--cone-range 8`
+- **Dinâmica**: `--max-speed 16.7`
+- **Observação**: `--legacy-obs`
+- **Hiperparâmetros**: `--lr 1e-4`, `--buffer-size 1000000`, `--batch-size 512`, `--target-entropy {-2.0, -1.0, -0.2}`
+- **Data Augmentation**: `--mirror-augment`
 
 ---
 
 ## 📂 Estrutura do Repositório
 
-AR/
-├── agent/                         # Implementação do agente RL
-│   ├── sac.py                     #   Soft Actor-Critic (PyTorch)
-│   ├── networks.py                #   Gaussian Actor + Twin Q-Networks
-│   └── replay_buffer.py           #   Replay buffer circular
-│
-├── config/                        # Configuração
-│   └── default.yaml               #   Parâmetros base do veículo e algoritmos
-│
-├── docs/                          # Documentação
-│   ├── planeamento.pdf            
-│   └── pacsim_setup.md            
-│
-├── env/                           # Ambiente de simulação Gymnasium
-│   ├── racing_env.py              #   FSRacingEnv (ambiente principal)
-│   ├── car_model.py               #   Modelo cinemático de bicicleta
-│   ├── track_generator.py         #   Gerador procedural de pistas
-│   ├── track_loader.py            #   Carregador de pistas YAML
-│   ├── cone_sensor.py             #   Simulação de sensores de perceção
-│   └── renderer.py                #   Visualização PyGame
-│
-├── scripts/                         # Scripts para testes e verificação
-│   ├── debug_reward.py            #   Debug dos componentes da recompensa
-│   └── test_steering.py           #   Teste de inferência de ações
-│
-├── tracks/                        # Diretório com as pistas oficiais (.yaml)
-│
-├── .gitignore                     
-├── evaluate.py                    # Avaliação e visualização de modelos treinados
-├── README.md                      
-├── requirements.txt               # Dependências Python
-└── train.py                       # Script principal de treino
+```
+AR2/
+├── agent/                    # Implementação custom (SAC, redes, buffer)
+├── config/                   # default.yaml — parâmetros base
+├── docs/                     # planeamento.pdf, pacsim_setup.md
+├── env/                      # Ambiente de simulação Gymnasium
+│   ├── racing_env.py         # FSRacingEnv (ambiente principal)
+│   ├── car_model.py          # Modelo cinemático de bicicleta
+│   ├── track_generator.py    # Gerador procedural
+│   ├── track_loader.py       # Carregador YAML + allowed_tracks
+│   ├── track_splits.py       # Splits canónicos train/test
+│   ├── cone_sensor.py        # Perceção de cones
+│   └── renderer.py           # Visualização PyGame
+├── results/                  # Tabelas LaTeX, CSV per-track, figuras
+├── runs/                     # Checkpoints e logs TensorBoard
+├── scripts/                  # eval_per_track, plot, mirror, debug, ...
+├── tracks/                   # Pistas oficiais FS-AI (.yaml)
+│   └── mirrored/             # Versões espelhadas em Y
+├── .gitignore
+├── evaluate.py               # Avaliação + visualização PyGame
+├── train.py                  # Script principal de treino
+├── requirements.txt
+└── README.md
+```
 
 ---
 
@@ -147,92 +202,157 @@ AR/
 
 ### Pré-requisitos
 
-* **Python ≥ 3.10** (via Anaconda/Miniconda recomendado)
+- **Python ≥ 3.10** (via Anaconda/Miniconda recomendado)
+- GPU NVIDIA (testado em RTX 5070 Ti)
 
-### Passos
+### Setup
 
-1. **Clonar o repositório:**
-   git clone https://github.com/pedroreis2468/AR.git
-   cd AR
+```bash
+git clone https://github.com/pedroreis2468/AR2.git
+cd AR2
+pip install -r requirements.txt
+```
 
-2. **Instalar dependências:**
-   pip install -r requirements.txt
+### Testar ambiente (agente aleatório)
 
-3. **Testar o ambiente (agente aleatório):**
-   python evaluate.py --random
+```bash
+python evaluate.py --random
+```
 
-4. **Treinar:**
-   # SAC custom (educativo)
-   python train.py --mode custom --total-steps 500000
+### Treino
 
-   # SB3 SAC (produção, recomendado)
-   python train.py --mode sb3 --algo sac --total-steps 2500000
+```bash
+# SAC baseline — 3 seeds × 3M steps
+python train.py --mode sb3 --algo sac --total-steps 3000000 \
+    --split train --seed 0 --n-envs 4 --device cuda --run-name sac_seed0
 
-   # SB3 PPO (baseline)
-   python train.py --mode sb3 --algo ppo --total-steps 1000000
+# PPO baseline — 3 seeds × 6M steps
+python train.py --mode sb3 --algo ppo --total-steps 6000000 \
+    --split train --seed 0 --n-envs 8 --device cuda --run-name ppo_seed0
 
-5. **Avaliar modelo treinado:**
-   # SB3 (auto-detecta VecNormalize na pasta do modelo)
-   python evaluate.py --model runs/<run_dir>/best/best_model.zip --mode sb3
+# SAC com mirror augmentation (resolve viés direcional)
+python train.py --mode sb3 --algo sac --total-steps 3000000 \
+    --split train --seed 0 --n-envs 4 --device cuda --mirror-augment \
+    --run-name sac_mirror_aug
 
-   # Avaliar numa pista específica
-   python evaluate.py --model runs/<run_dir>/best/best_model.zip --mode sb3 --track FSG19
+# Exemplo de ablação (sem domain randomization)
+python train.py --mode sb3 --algo sac --total-steps 2000000 \
+    --split train --seed 0 --n-envs 4 --device cuda --no-dr \
+    --run-name abl_sac_no_dr
+```
 
-6. **Monitorizar treino:**
-   tensorboard --logdir runs/
+### Avaliação
 
-### Debug e Testes
+```bash
+# Visualização PyGame numa pista específica
+python evaluate.py --mode sb3 \
+    --model runs/sac_seed2/best/best_model.zip \
+    --track FSG24 --n-episodes 3
 
-# Verificar componentes do reward no terminal (roda a partir da raiz)
-python scripts/debug_reward.py --steps 300
+# Avaliação per-track (CSV + tabela LaTeX) no test split
+python scripts/eval_per_track.py \
+    --model runs/sac_seed2/best/best_model.zip --algo sac \
+    --split test --n-episodes 10 \
+    --output-dir results/sac_seed2
 
-# Testar steering isoladamente
-python scripts/test_steering.py
+# Avaliação em pistas espelhadas (held-out)
+python scripts/eval_per_track.py \
+    --model runs/sac_seed2/best/best_model.zip --algo sac \
+    --tracks-dir tracks/mirrored \
+    --tracks-list mirrored_FSG24 mirrored_FSI24 mirrored_FSCZ24 mirrored_FSE24 mirrored_FSS22_V2 \
+    --n-episodes 10 \
+    --output-dir results/sac_seed2_mirrored
+
+# Curvas de aprendizagem agregadas
+python scripts/plot_learning_curves.py \
+    --sac-runs runs/sac_seed0 runs/sac_seed1 runs/sac_seed2 \
+    --ppo-runs runs/ppo_seed0 runs/ppo_seed1 runs/ppo_seed2 \
+    --output results/learning_curves.pdf --smooth 5
+```
+
+### Monitorização
+
+```bash
+tensorboard --logdir runs/
+```
+
+### Debug
+
+```bash
+python scripts/debug_reward.py --steps 300   # decomposição da reward
+python scripts/test_steering.py              # teste de inferência
+```
 
 ---
 
-## ⚙️ Configuração
+## 🔍 Findings principais
 
-Parâmetros editáveis em config/default.yaml:
+### 1. SAC vs PPO: trade-off velocidade vs segurança
 
-| Secção | Parâmetros |
-|--------|-----------|
-| **environment** | dt, action_repeat, max_episode_steps, randomize_track |
-| **vehicle** | mass, wheelbase, max_speed, max_steering, mu |
-| **track** | track_width, cone_spacing, min_radius, arena_size |
-| **penalties** | cone_penalty_reward, doo_cone_limit, oc_time_limit |
-| **sensors** | max_range, fov, n_closest_per_side, noise_range |
-| **sac** | hidden_dims, lr_actor, gamma, tau, buffer_size |
-| **training** | total_steps, n_envs, eval_freq, checkpoint_freq |
+Embora SAC e PPO apresentem lap rates comparáveis no test split, **SAC é claramente mais conservador** (2.4 vs 4.8 cones derrubados em média). PPO é ligeiramente mais rápido mas mais agressivo.
+
+### 2. FOV do sensor tem um sweet spot
+
+Tanto FOV reduzido (90°) como super-amplo (360°) degradam significativamente o desempenho de treino face ao default (180°), sugerindo um trade-off perceção-aprendizagem que **não é monotónico**.
+
+### 3. Viés direcional sistemático
+
+Avaliando os modelos em **pistas espelhadas em Y** (mesma geometria, direção invertida), verificámos:
+
+- SAC cai de 66% → 40% (média 3 seeds, **−26pp**)
+- PPO cai de 68% → 45% (média 3 seeds, **−23pp**)
+- Padrão **bimodal** no SAC (10% ou 100% por pista)
+- Padrão **degradação uniforme** no PPO
+
+Isto sugere que o test split FS-AI tradicional **subestima o overfit estrutural** dos modelos.
+
+### 4. Mirror augmentation elimina o viés
+
+Treinando 1 seed SAC com **espelhamento Y aleatório (50%) em cada reset**, obtemos:
+
+| Métrica          | SAC baseline | SAC + Mirror Aug. |
+|------------------|-------------:|------------------:|
+| Train lap rate   | (não medido) | **100%**          |
+| Test lap rate    | 66%          | **72%** (+6pp)    |
+| Mirror lap rate  | 40%          | **74%** (+34pp)   |
+| Cones (test)     | 2.4          | **2.9**           |
+
+O modelo aumentado é **igualmente bom** em pistas originais e espelhadas, e até **melhora** o desempenho em ambas. Isto demonstra que o problema era estrutural ao treino, não ao algoritmo.
 
 ---
 
-## 🧪 Extensão Exploratória: PacSim (3D)
+## 🧪 Trabalho Exploratório: PacSim (sim-to-sim)
 
-Como objetivo secundário, está a ser explorada a integração com o PacSim, um simulador 3D baseado em ROS 2, para investigar *sim-to-sim transfer* de políticas treinadas no ambiente 2D. Notas de instalação em docs/pacsim_setup.md.
+Em paralelo, explorámos a integração com o **PacSim** (simulador 3D ROS 2 da Formula Student) para investigar *sim-to-sim transfer* de políticas treinadas no ambiente 2D. O setup encontra-se em:
+
+- `scripts/run_pacsim_viz.sh` — RViz2 helper
+- `scripts/test_pacsim_env.py` — bridge ambiente → ROS 2 topics
+- `scripts/test_pacsim_live.py` — teste em pacote PacSim em execução
+- `docs/pacsim_setup.md` — notas de instalação
 
 ---
 
 ## 📚 Referências
 
-* Kabzan, J. et al. (2020). AMZ Driverless: The Full Autonomous Racing System. J. Field Robotics, 37(7).
-* Haarnoja, T. et al. (2018). Soft Actor-Critic Algorithms and Applications. arXiv:1812.05905.
-* Schulman, J. et al. (2017). Proximal Policy Optimization Algorithms. arXiv:1707.06347.
-* Kong, J. et al. (2015). Kinematic and Dynamic Vehicle Models for Autonomous Driving. IEEE IV.
-* Tobin, J. et al. (2017). Domain Randomization for Sim-to-Real Transfer. IEEE/RSJ IROS.
-* Sutton, R. S. & Barto, A. G. (2018). Reinforcement Learning: An Introduction (2nd ed.). MIT Press.
+- Kabzan, J. et al. (2020). *AMZ Driverless: The Full Autonomous Racing System*. J. Field Robotics, 37(7).
+- Haarnoja, T. et al. (2018). *Soft Actor-Critic Algorithms and Applications*. arXiv:1812.05905.
+- Schulman, J. et al. (2017). *Proximal Policy Optimization Algorithms*. arXiv:1707.06347.
+- Raffin, A. et al. (2021). *Stable-Baselines3: Reliable Reinforcement Learning Implementations*. JMLR 22(268).
+- Kong, J. et al. (2015). *Kinematic and Dynamic Vehicle Models for Autonomous Driving*. IEEE IV.
+- Tobin, J. et al. (2017). *Domain Randomization for Sim-to-Real Transfer*. IEEE/RSJ IROS.
+- Sutton, R. S. & Barto, A. G. (2018). *Reinforcement Learning: An Introduction* (2nd ed.). MIT Press.
 
 ---
 
 ## 👥 Grupo 1
 
-| Nº | Nome | Email |
-|----|------|-------|
-| PG60390 | Luís Miguel Pereira Silva | pg60390@alunos.uminho.pt |
-| PG59908 | Pedro Miguel S. A. Urbano dos Reis | pg59908@alunos.uminho.pt |
+| Nº       | Nome                                | Email                        |
+|----------|-------------------------------------|------------------------------|
+| PG60390  | Luís Miguel Pereira Silva           | pg60390@alunos.uminho.pt     |
+| PG59908  | Pedro Miguel S. A. Urbano dos Reis  | pg59908@alunos.uminho.pt     |
 
 ---
 
 ## 📜 Licença
 
-Este trabalho é de cariz estritamente académico. Universidade do Minho, Escola de Engenharia, Departamento de Informática.
+Trabalho de cariz estritamente académico. Universidade do Minho, Escola de Engenharia, Departamento de Informática.
