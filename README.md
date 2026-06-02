@@ -256,7 +256,7 @@ python train.py --mode sb3 --algo sac --total-steps 2000000 \
 ```bash
 # Visualização PyGame numa pista específica
 python evaluate.py --mode sb3 \
-    --model runs/sac_seed2/best/best_model.zip \
+    --model runs/sac_seed0/best/best_model.zip \
     --track FSG24 --n-episodes 3
 
 # Avaliação per-track (CSV + tabela LaTeX) no test split
