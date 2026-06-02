@@ -34,7 +34,13 @@ def evaluate_one_track(model, track_name, n_episodes, args, vecnorm=None):
       - posição inicial lateral (±0.5m)
       - velocidade inicial (0-3 m/s)
       - ruído do sensor de cones
-    Cada episódio recebe uma seed distinta para reprodutibilidade.
+
+    ATENÇÃO (reprodutibilidade): todas estas fontes usam o np.random GLOBAL,
+    que este script NÃO semeia. O seed passado a reset() só semeia o
+    self.np_random do Gymnasium, que o env não usa para a aleatoriedade acima.
+    Logo a avaliação é estocástica e NÃO reproduzível entre execuções: os
+    valores devem ler-se como estimativas da performance média sob domain
+    randomization, não como medições exatas (ver README, nota metodológica).
     """
     env = FSRacingEnv(
         render_mode=None,

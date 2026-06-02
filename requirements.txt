@@ -1,19 +1,30 @@
-# FS Racing RL - Dependências
-# Core
-numpy>=1.24
-scipy>=1.10
-torch>=2.0
-gymnasium>=0.29
+# FS Racing RL - Dependencias (versoes fixadas para reprodutibilidade)
+#
+# Ambiente de referencia: Python >=3.10 (testado em 3.13), treino em GPU
+# NVIDIA (CUDA 12.4, RTX 5070 Ti).
+#
+# NOTA torch: a versao fixada e a base. Para suporte CUDA, instalar a partir
+# do indice da PyTorch:
+#   pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cu124
 
-# Visualização
-pygame>=2.5
+# --- Core ---
+numpy==2.3.5
+scipy==1.16.3
+torch==2.6.0
+gymnasium==1.2.3
 
-# Treino (opcional - para modo sb3)
-stable-baselines3[extra]>=2.1
+# --- Visualizacao ---
+pygame==2.6.1
 
-# Logging
-tensorboard>=2.14
+# --- Treino (modo sb3); [extra] inclui opencv, tensorboard, etc. ---
+stable-baselines3[extra]==2.8.0
 
-# Utilitários
-pyyaml>=6.0
-matplotlib>=3.7
+# --- Logging ---
+tensorboard==2.20.0
+
+# --- Utilitarios ---
+pyyaml==6.0.3
+matplotlib==3.10.6
+
+# --- Testes ---
+pytest>=7.4

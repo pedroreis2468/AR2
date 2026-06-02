@@ -1,0 +1,4 @@
+model,n_seeds,lap_rate,cones,speed_kmh
+SAC,3,66+/-0,2.4+/-0.6,76+/-1
+PPO,3,68+/-7,4.8+/-0.9,79+/-1
+SAC+Mirror Aug.,1,72,2.9,67

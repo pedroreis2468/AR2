@@ -167,6 +167,16 @@ Comparação entre os melhores modelos no test split FS-AI (5 pistas inéditas, 
 - **Hiperparâmetros**: `--lr 1e-4`, `--buffer-size 1000000`, `--batch-size 512`, `--target-entropy {-2.0, -1.0, -0.2}`
 - **Data Augmentation**: `--mirror-augment`
 
+### ⚠️ Nota metodológica: avaliação estocástica
+
+> A avaliação per-track corre **N=10 episódios por pista com _domain randomization_ ativa**: cada episódio sorteia massa (±15%), atrito (±20%), arrasto (±10%), posição/velocidade iniciais e ruído de perceção. Os valores reportados são, portanto, **estimativas da performance média sob variação** — não medições determinísticas.
+>
+> Estas fontes de aleatoriedade usam o gerador **global** do NumPy, que o avaliador não semeia; o `seed` passado a cada episódio (`reset(seed=...)`) só afeta o `np_random` do Gymnasium, que o ambiente não usa para esta variabilidade. Logo, **re-execuções produzem valores ligeiramente diferentes** (variação observada ≈ ±5–8 pp no _lap rate_ com N=10). Implicações para a leitura dos resultados:
+>
+> - As médias de 3 seeds são estáveis em tendência e suportam as conclusões.
+> - **Diferenças de poucos pontos percentuais entre modelos/ablações estão dentro do ruído amostral** e não devem ser sobre-interpretadas.
+> - Os efeitos grandes — consistência SAC vs PPO (≈2× menos cones), viés direcional (≈−25 pp) e _mirror augmentation_ (+34 pp em espelhadas) — situam-se muito acima desse ruído e são robustos.
+
 ---
 
 ## 📂 Estrutura do Repositório
@@ -274,6 +284,12 @@ python scripts/plot_learning_curves.py \
 
 ```bash
 tensorboard --logdir runs/
+```
+
+### Testes
+
+```bash
+pytest -q     # suite unitária: ambiente, modelo de veículo, splits (16 testes)
 ```
 
 ### Debug

@@ -1,0 +1,4 @@
+model,test_lap_rate,mirror_lap_rate,delta_pp
+SAC,66+/-0,40+/-11,-26
+PPO,68+/-7,45+/-6,-23
+SAC+Mirror Aug.,72,74,+2
