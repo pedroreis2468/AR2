@@ -31,6 +31,25 @@ Comparação entre os melhores modelos no test split FS-AI (5 pistas inéditas, 
 
 ---
 
+## 📦 Entrega e Avaliação
+
+Para facilitar a avaliação do trabalho, a entrega inclui três pontos de entrada:
+
+| Artefacto | Ficheiro | O que é |
+|-----------|----------|---------|
+| 📄 **Relatório final** | [`docs/report.pdf`](docs/report.pdf) | Relatório final (PDF) com metodologia, resultados, ablações e discussão. |
+| 📓 **Notebook de avaliação** | [`notebooks/overview.ipynb`](notebooks/overview.ipynb) | Reúne os resultados principais (tabelas + figuras) e permite **correr avaliação ao vivo** dos modelos treinados. Já vem com os outputs executados. |
+| 📊 **Resultados agregados** | [`results/aggregated/`](results/aggregated/) | CSVs e tabelas LaTeX prontas (SAC vs PPO, per-track, ablações, viés direcional). |
+
+**Abrir o notebook** (não precisa de GPU; secções 1–5 correm em segundos):
+
+```bash
+pip install -r requirements.txt
+jupyter notebook notebooks/overview.ipynb   # depois: Kernel → Restart & Run All
+```
+
+---
+
 ## 🎯 Objetivos
 
 - Treinar um agente SAC/PPO capaz de completar voltas em pistas FS sem derrubar cones
@@ -76,6 +95,10 @@ Comparação entre os melhores modelos no test split FS-AI (5 pistas inéditas, 
 | Script                          | Função                                                       |
 |---------------------------------|--------------------------------------------------------------|
 | `eval_per_track.py`             | Avaliação per-pista (gera CSV + tabela LaTeX)               |
+| `aggregate_seeds.py` / `aggregate_ablations.py` | Agregam seeds/ablações → CSV + tabelas LaTeX |
+| `make_report_figures.py`        | Gera as figuras do relatório/notebook a partir dos CSVs      |
+| `make_reward_animation.py`      | Anima a recompensa a evoluir enquanto o carro conduz (GIF)   |
+| `reward_iterations.py`          | Estudo iterativo de reward shaping (10 iterações: treina+avalia+figuras) |
 | `plot_learning_curves.py`       | Curvas de aprendizagem agregadas (SAC vs PPO)                |
 | `mirror_tracks.py`              | Espelha pistas em Y (gera test held-out de viés direcional) |
 | `debug_reward.py`               | Debug dos componentes da recompensa                          |
@@ -185,7 +208,11 @@ Comparação entre os melhores modelos no test split FS-AI (5 pistas inéditas, 
 AR2/
 ├── agent/                    # Implementação custom (SAC, redes, buffer)
 ├── config/                   # default.yaml — parâmetros base
-├── docs/                     # planeamento.pdf, pacsim_setup.md
+├── docs/                     # report.pdf, planeamento.pdf, apresentação, pacsim_setup.md
+│   ├── report.pdf            # ← RELATÓRIO FINAL (PDF, adicionar antes da entrega)
+│   └── planeamento.tex/.pdf  # Relatório de planeamento
+├── notebooks/                # ← NOTEBOOK DE AVALIAÇÃO
+│   └── overview.ipynb        # Resultados + avaliação ao vivo (executado)
 ├── env/                      # Ambiente de simulação Gymnasium
 │   ├── racing_env.py         # FSRacingEnv (ambiente principal)
 │   ├── car_model.py          # Modelo cinemático de bicicleta
@@ -195,8 +222,10 @@ AR2/
 │   ├── cone_sensor.py        # Perceção de cones
 │   └── renderer.py           # Visualização PyGame
 ├── results/                  # Tabelas LaTeX, CSV per-track, figuras
+│   ├── aggregated/           # Resumos agregados (CSV + LaTeX)
+│   └── figures/              # Figuras do relatório/notebook (PDF + PNG)
 ├── runs/                     # Checkpoints e logs TensorBoard
-├── scripts/                  # eval_per_track, plot, mirror, debug, ...
+├── scripts/                  # eval_per_track, plot, mirror, make_report_figures, ...
 ├── tracks/                   # Pistas oficiais FS-AI (.yaml)
 │   └── mirrored/             # Versões espelhadas em Y
 ├── .gitignore
