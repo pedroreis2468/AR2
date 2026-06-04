@@ -98,7 +98,7 @@ jupyter notebook notebooks/overview.ipynb   # depois: Kernel → Restart & Run A
 | `aggregate_seeds.py` / `aggregate_ablations.py` | Agregam seeds/ablações → CSV + tabelas LaTeX |
 | `make_report_figures.py`        | Gera as figuras do relatório/notebook a partir dos CSVs      |
 | `make_reward_animation.py`      | Anima a recompensa a evoluir enquanto o carro conduz (GIF)   |
-| `reward_iterations.py`          | Estudo iterativo de reward shaping (10 iterações: treina+avalia+figuras) |
+| `reward_iterations.py`          | Ablação de reward: jornada de 6 fixes (treina N seeds + avalia + figuras) |
 | `plot_learning_curves.py`       | Curvas de aprendizagem agregadas (SAC vs PPO)                |
 | `mirror_tracks.py`              | Espelha pistas em Y (gera test held-out de viés direcional) |
 | `debug_reward.py`               | Debug dos componentes da recompensa                          |
