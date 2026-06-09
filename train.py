@@ -244,6 +244,8 @@ def train_sb3(args):
                 sensor_noise=not args.no_sensor_noise,
                 max_speed_override=args.max_speed,
                 mirror_augment=args.mirror_augment,
+                cone_dropout_augment=args.cone_dropout_augment,
+                cone_dropout_max=args.cone_dropout_max,
             )
             env = Monitor(env, os.path.join(log_dir, f"monitor_{rank}"))
             return env
@@ -258,8 +260,10 @@ def train_sb3(args):
 
     # Eval env: usa SEMPRE o mesmo split (train) durante o treino para curvas comparáveis.
     # A avaliação final em pistas inéditas é feita por scripts/eval_per_track.py.
-    eval_env = (SubprocVecEnv([make_env(99, seed=base_seed + 9999)])
-                if n_envs > 1 else DummyVecEnv([make_env(99, seed=base_seed + 9999)]))
+    # Eval env sempre single-process (DummyVecEnv): é 1 só env (não ganha nada com
+    # Subproc) e evita um subprocesso extra frágil — era a origem do ConnectionResetError
+    # ao spawnar, sobretudo correndo vários treinos seguidos.
+    eval_env = DummyVecEnv([make_env(99, seed=base_seed + 9999)])
 
     # Normalizar recompensas — reduz a magnitude dos gradientes do actor
     # e estabiliza Q-values. Não normaliza observações (já feito no env).
@@ -447,6 +451,13 @@ def main():
     abl_group.add_argument('--mirror-augment', action='store_true',
                            help='Data augmentation: 50%% das pistas carregadas são espelhadas em Y. '
                                 'Trata viés direcional sem alterar a função de recompensa.')
+    abl_group.add_argument('--cone-dropout-augment', action='store_true',
+                           help='Data augmentation: remove cones físicos aleatoriamente a cada '
+                                'episódio (persistente), mantendo a centerline. Trata a fragilidade '
+                                'a cones em falta sem alterar a recompensa.')
+    abl_group.add_argument('--cone-dropout-max', type=float, default=0.15,
+                           help='Fração máxima de cones removidos por episódio (uniforme [0, max]); '
+                                'só usado com --cone-dropout-augment. Default 0.15 (regime realista).')
 
     args = parser.parse_args()
 

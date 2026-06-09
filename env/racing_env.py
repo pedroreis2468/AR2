@@ -40,6 +40,11 @@ from .track_loader import YAMLTrackLoader
 from .cone_sensor import ConeSensor, BoundarySensor
 
 
+# Anunciar o carregamento de pistas só UMA vez por (dir, nº pistas) por processo:
+# evita o spam de "[INFO] Carregadas ..." quando se constroem vários envs (notebook).
+_ANNOUNCED_TRACK_DIRS = set()
+
+
 class FSRacingEnv(gym.Env):
 
     metadata = {'render_modes': ['human', 'rgb_array'], 'render_fps': 50}
@@ -76,6 +81,9 @@ class FSRacingEnv(gym.Env):
         sensor_noise: bool = True,       # default True (ruído gaussiano)
         max_speed_override: Optional[float] = None,  # se dado, sobrescreve max_speed do veículo
         mirror_augment: bool = False,    # data augmentation: espelha pista em Y aleatoriamente
+        cone_dropout_augment: bool = False,  # data augmentation: remove cones físicos aleatoriamente
+        cone_dropout_max: float = 0.15,      # fração máx. removida/episódio (uniforme [0, max])
+        cone_dropout_prob: float = 0.5,      # probabilidade de um episódio ter remoção
     ):
         super().__init__()
         self.render_mode = render_mode
@@ -100,6 +108,9 @@ class FSRacingEnv(gym.Env):
         self.persistent_cone_knockdown = persistent_cone_knockdown
         self.sensor_noise = sensor_noise
         self.mirror_augment = mirror_augment
+        self.cone_dropout_augment = cone_dropout_augment
+        self.cone_dropout_max = cone_dropout_max
+        self.cone_dropout_prob = cone_dropout_prob
 
         self.vehicle_params = vehicle_params or VehicleParams()
         # Ablation: opcionalmente sobrescrever max_speed do veículo
@@ -120,8 +131,11 @@ class FSRacingEnv(gym.Env):
             self.track_loader = YAMLTrackLoader(tracks_dir, allowed_tracks=allowed_tracks)
             self._yaml_rng = np.random.RandomState(track_seed)
             self.track_gen = None
-            print(f"[INFO] Carregadas {self.track_loader.n_tracks} pistas YAML: "
-                  f"{', '.join(self.track_loader.track_names)}")
+            _key = (tracks_dir, self.track_loader.n_tracks)
+            if _key not in _ANNOUNCED_TRACK_DIRS:
+                _ANNOUNCED_TRACK_DIRS.add(_key)
+                print(f"[INFO] Carregadas {self.track_loader.n_tracks} pistas YAML: "
+                      f"{', '.join(self.track_loader.track_names)}")
         else:
             self.track_loader = None
             self.track_gen = TrackGenerator(self.track_params, track_seed)
@@ -215,6 +229,23 @@ class FSRacingEnv(gym.Env):
         td_new['normals'] = normals
         return td_new
 
+    def _cone_dropout_track_data(self, td, frac):
+        """Devolve um NOVO track_data com uma fração `frac` dos cones azuis/amarelos
+        removida (persistente no episódio). NÃO muta o original (cópia rasa + arrays
+        novos), e mantém a centerline/boundaries/start intactas — é a MESMA pista,
+        só com menos cones a marcá-la (a reward/off-course usam a centerline completa).
+        """
+        td_new = dict(td)  # cópia rasa; só substituímos os arrays de cones
+        for key in ('blue_cones', 'yellow_cones'):
+            c = td.get(key)
+            if c is None or len(c) == 0 or frac <= 0:
+                continue
+            n = len(c)
+            n_keep = max(2, int(round(n * (1.0 - frac))))
+            keep = np.sort(np.random.choice(n, size=n_keep, replace=False))
+            td_new[key] = c[keep].copy()
+        return td_new
+
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
 
@@ -237,6 +268,13 @@ class FSRacingEnv(gym.Env):
             if self.mirror_augment and np.random.random() < 0.5:
                 self.track_data = self._mirror_track_data(self.track_data)
                 self.current_track_name = self.current_track_name + '_M'
+
+            # Cone-dropout augmentation: remove uma fração dos cones físicos
+            # (persistente no episódio), mantendo a centerline/reward intactas.
+            if self.cone_dropout_augment and np.random.random() < self.cone_dropout_prob:
+                frac = np.random.uniform(0.0, self.cone_dropout_max)
+                self.track_data = self._cone_dropout_track_data(self.track_data, frac)
+                self.current_track_name = self.current_track_name + '_D'
 
         td = self.track_data
         start_offset = 0.0

@@ -9,7 +9,7 @@
 
 > **Aprendizagem por Reforço** · Mestrado em Inteligência Artificial · Universidade do Minho · 2025/26
 
-Agente de Reinforcement Learning que aprende a conduzir um carro de Formula Student Driverless em pistas delimitadas por cones, seguindo as regras oficiais **FS-AI**. O ambiente 2D simula sensores de perceção, física cinemática e penalizações realistas, treinando com **14 pistas reais de competição** em formato YAML.
+Agente de Reinforcement Learning que aprende a conduzir um carro de Formula Student Driverless em pistas delimitadas por cones, seguindo as regras oficiais **FS-AI**. O ambiente 2D simula sensores de perceção, física cinemática e penalizações realistas, sobre **14 pistas reais de competição** em formato YAML (9 de treino, 5 de teste inéditas).
 
 ---
 
@@ -28,6 +28,8 @@ Comparação entre os melhores modelos no test split FS-AI (5 pistas inéditas, 
 - ✅ **SAC supera PPO em consistência** (3× menos cones derrubados) apesar de PPO ter ligeiramente mais lap rate em algumas seeds
 - 🔍 **Identificámos viés direcional** via avaliação em pistas espelhadas: lap rate cai de 66% → 40% (SAC) e 68% → 45% (PPO)
 - 🎯 **Mirror augmentation** elimina o viés (74% em espelhadas) e melhora generalização global (+6pp em pistas originais)
+- 👁️ **Robustez de perceção assimétrica:** o agente tolera *flicker* do sensor (≤10% de deteções perdidas/frame ≈ sem efeito) mas **não** cones fisicamente em falta — a remoção persistente colapsa o lap rate já a 5–10%
+- 🛡️ **Augmentation dirigida corrige e compõe-se:** treinar com *cone-dropout* recupera os cones em falta e **juntar mirror + dropout é super-aditivo** (17%→48% de lap rate a 10% de cones removidos), sem custo no baseline
 
 ---
 
@@ -41,7 +43,7 @@ Para facilitar a avaliação do trabalho, a entrega inclui três pontos de entra
 | 📓 **Notebook de avaliação** | [`notebooks/overview.ipynb`](notebooks/overview.ipynb) | Reúne os resultados principais (tabelas + figuras) e permite **correr avaliação ao vivo** dos modelos treinados. Já vem com os outputs executados. |
 | 📊 **Resultados agregados** | [`results/aggregated/`](results/aggregated/) | CSVs e tabelas LaTeX prontas (SAC vs PPO, per-track, ablações, viés direcional). |
 
-**Abrir o notebook** (não precisa de GPU; secções 1–5 correm em segundos):
+**Abrir o notebook** (não precisa de GPU; as tabelas e curvas correm em segundos, os GIFs ficam em cache após a 1.ª geração):
 
 ```bash
 pip install -r requirements.txt
@@ -55,7 +57,7 @@ jupyter notebook notebooks/overview.ipynb   # depois: Kernel → Restart & Run A
 - Treinar um agente SAC/PPO capaz de completar voltas em pistas FS sem derrubar cones
 - Implementar regras FS-AI realistas: penalizações por cone (+2s), DOO, off-course gradual
 - Suportar pistas reais de competição (FSG19, FSE22, FSE24, etc.) via ficheiros YAML
-- **Avaliar generalização** via splits canónicos + pistas espelhadas (held-out)
+- **Avaliar generalização e robustez** via splits canónicos, pistas espelhadas e cones em falta (held-out)
 
 ---
 
@@ -101,6 +103,9 @@ jupyter notebook notebooks/overview.ipynb   # depois: Kernel → Restart & Run A
 | `reward_iterations.py`          | Ablação de reward: jornada de 6 fixes (treina N seeds + avalia + figuras) |
 | `plot_learning_curves.py`       | Curvas de aprendizagem agregadas (SAC vs PPO)                |
 | `mirror_tracks.py`              | Espelha pistas em Y (gera test held-out de viés direcional) |
+| `eval_perception_robustness.py` | Sweep de robustez de perceção: *flicker* transiente (`--mode perception`) / remoção estrutural de cones (`--mode structural`) → CSV + figura |
+| `make_perception_failure_gif.py`| GIF + contraste do carro a falhar por falta de cones (modo *perception*/*structural*) |
+| `augmentation_matrix.py`        | Matriz 2×2 de robustez (espelhado × cones em falta) nos 4 modelos do design factorial |
 | `debug_reward.py`               | Debug dos componentes da recompensa                          |
 | `test_steering.py`              | Teste de inferência de ações                                 |
 | `run_pacsim_viz.sh` + `test_pacsim_*.py` | Exploração sim-to-sim com PacSim 3D                 |
@@ -179,6 +184,8 @@ jupyter notebook notebooks/overview.ipynb   # depois: Kernel → Restart & Run A
 | Baseline      | PPO       | 6M    | 3     | `runs/ppo_seed{0,1,2}`               |
 | Ablações      | SAC       | 2M    | 1     | 15 variantes (`runs/abl_sac_*`)      |
 | Mirror Aug.   | SAC       | 3M    | 1     | `runs/sac_mirror_aug`                |
+| Cone-dropout Aug.   | SAC | 3M  | 1     | `runs/sac_dropout_aug`               |
+| Mirror+Dropout Aug. | SAC | 3M  | 1     | `runs/sac_mirror_dropout_aug`        |
 
 ### Ablações realizadas
 
@@ -188,7 +195,7 @@ jupyter notebook notebooks/overview.ipynb   # depois: Kernel → Restart & Run A
 - **Dinâmica**: `--max-speed 16.7`
 - **Observação**: `--legacy-obs`
 - **Hiperparâmetros**: `--lr 1e-4`, `--buffer-size 1000000`, `--batch-size 512`, `--target-entropy {-2.0, -1.0, -0.2}`
-- **Data Augmentation**: `--mirror-augment`
+- **Data Augmentation**: `--mirror-augment`, `--cone-dropout-augment`
 
 ### ⚠️ Nota metodológica: avaliação estocástica
 
@@ -223,6 +230,7 @@ AR2/
 │   └── renderer.py           # Visualização PyGame
 ├── results/                  # Tabelas LaTeX, CSV per-track, figuras
 │   ├── aggregated/           # Resumos agregados (CSV + LaTeX)
+│   ├── perception_*/ · aug_matrix/   # Robustez de perceção + matriz de augmentation (CSV)
 │   └── figures/              # Figuras do relatório/notebook (PDF + PNG)
 ├── runs/                     # Checkpoints e logs TensorBoard
 ├── scripts/                  # eval_per_track, plot, mirror, make_report_figures, ...
@@ -336,9 +344,9 @@ python scripts/test_steering.py              # teste de inferência
 
 Embora SAC e PPO apresentem lap rates comparáveis no test split, **SAC é claramente mais conservador** (2.4 vs 4.8 cones derrubados em média). PPO é ligeiramente mais rápido mas mais agressivo.
 
-### 2. FOV do sensor tem um sweet spot
+### 2. FOV do sensor tem um sweet spot (em qualidade)
 
-Tanto FOV reduzido (90°) como super-amplo (360°) degradam significativamente o desempenho de treino face ao default (180°), sugerindo um trade-off perceção-aprendizagem que **não é monotónico**.
+Tanto FOV reduzido (90°) como super-amplo (360°) **sobem o lap rate** face ao default (180°: 60% → 84%), mas **à custa de muitos mais cones derrubados** (9.2 e 17.4 vs 3.2). O *sweet spot* de 180° é em **qualidade/segurança**, não em *lap rate* bruto — um trade-off perceção-aprendizagem que **não é monotónico**.
 
 ### 3. Viés direcional sistemático
 
@@ -363,6 +371,34 @@ Treinando 1 seed SAC com **espelhamento Y aleatório (50%) em cada reset**, obte
 | Cones (test)     | 2.4          | **2.9**           |
 
 O modelo aumentado é **igualmente bom** em pistas originais e espelhadas, e até **melhora** o desempenho em ambas. Isto demonstra que o problema era estrutural ao treino, não ao algoritmo.
+
+### 5. Robustez de perceção: o *flicker* não dói, os cones em falta sim
+
+Sondámos a perceção de **duas** formas — e dão resultados **opostos**, o que é o achado mais interessante desta análise:
+
+- **Falha transiente** (cada cone tem probabilidade de não ser detetado *por frame*, via `detection_prob`): **tolerada**. A ≤10% de deteções perdidas o lap rate mantém-se dentro do ruído amostral — um cone falhado num frame reaparece no seguinte, e a política média esse ruído ao longo dos steps.
+- **Cones fisicamente em falta** (remoção **persistente** de uma fração dos cones, mantendo a *centerline* intacta): **colapso**. Já a 5–10% o lap rate desaba.
+
+| Cones perdidos (a 10%) | Transiente (*flicker*) | Persistente (em falta) |
+|------------------------|-----------------------:|-----------------------:|
+| **SAC**                | 63%                    | **17%**                |
+| **PPO**                | 62%                    | **10%**                |
+| **SAC + Mirror Aug.**  | 80%                    | **30%**                |
+
+**Não é *quantos* cones se perdem — é *por quanto tempo*.** Um cone falhado num frame é ruído de curto prazo; um cone que desaparece deixa um **buraco de informação** que não há como preencher. Mantêm-se os padrões das secções anteriores: **SAC degrada-se melhor que PPO**, e o **`SAC + Mirror Aug.` é o mais robusto** em ambos os regimes.
+
+### 6. Augmentation dirigida corrige as fraquezas — e compõe-se
+
+As fraquezas dos achados 3 e 5 são **estruturais ao treino**, não ao algoritmo: corrigem-se com *data augmentation* dirigida, **sem mexer na recompensa**. Treinando o design factorial (SAC 3M, 1 seed por augmentation) e avaliando nos dois *probes*:
+
+| Modelo | Test normal | Espelhado | Cones em falta (10%) |
+|--------|------------:|----------:|---------------------:|
+| Base        | 63 % | 39 % | 17 % |
+| + Mirror    | 86 % | **82 %** | 30 % |
+| + Dropout   | 62 % | 60 % | 28 % |
+| **+ Ambos** | 82 % | **78 %** | **48 %** |
+
+Cada augmentation **arruma sobretudo o seu eixo** (mirror→espelhado, dropout→cones em falta), e **juntá-las é super-aditivo nos cones em falta (48 %, acima dos 30/28 individuais)** — sem custo no *baseline* (até sobe). O `--cone-dropout-augment` remove 0–15 % dos cones físicos a cada *reset*, mantendo a *centerline* intacta. **Ressalva:** nem o `+Ambos` salva o regime catastrófico (≥30 % removido) — a política é reativa, sem memória; o caminho aí seria dar-lhe memória (*LSTM* / *frame-stacking*).
 
 ---
 

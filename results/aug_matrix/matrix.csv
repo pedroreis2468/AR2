@@ -1,0 +1,5 @@
+label,test_normal,espelhado,cones_em_falta,n_seeds
+Base,62.666666666666664,39.333333333333336,17.333333333333332,3
++Mirror,86.0,82.0,30.0,1
++Dropout,62.0,60.0,28.0,1
++Ambos,82.0,78.0,48.0,1

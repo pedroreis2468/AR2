@@ -1,0 +1,17 @@
+label,dropout,lap_rate
+Base,0.0,62.666666666666664
+Base,0.05,36.666666666666664
+Base,0.1,17.333333333333332
+Base,0.2,6.0
++Mirror,0.0,86.0
++Mirror,0.05,42.0
++Mirror,0.1,30.0
++Mirror,0.2,12.0
++Dropout,0.0,62.0
++Dropout,0.05,50.0
++Dropout,0.1,28.0
++Dropout,0.2,10.0
++Ambos,0.0,82.0
++Ambos,0.05,52.0
++Ambos,0.1,48.0
++Ambos,0.2,18.0
