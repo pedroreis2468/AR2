@@ -216,7 +216,7 @@ AR2/
 ├── agent/                    # Implementação custom (SAC, redes, buffer)
 ├── config/                   # default.yaml — parâmetros base
 ├── docs/                     # report.pdf, planeamento.pdf, apresentação, pacsim_setup.md
-│   ├── report.pdf            # ← RELATÓRIO FINAL (PDF, adicionar antes da entrega)
+│   ├── report.pdf/.tex       # ← RELATÓRIO FINAL (LNCS)
 │   └── planeamento.tex/.pdf  # Relatório de planeamento
 ├── notebooks/                # ← NOTEBOOK DE AVALIAÇÃO
 │   └── overview.ipynb        # Resultados + avaliação ao vivo (executado)
