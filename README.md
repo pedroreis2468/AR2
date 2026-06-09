@@ -398,6 +398,8 @@ As fraquezas dos achados 3 e 5 são **estruturais ao treino**, não ao algoritmo
 | + Dropout   | 62 % | 60 % | 28 % |
 | **+ Ambos** | 82 % | **78 %** | **48 %** |
 
+> ℹ️ **Nota de protocolo:** esta matriz é uma **re-avaliação independente** (`scripts/augmentation_matrix.py`) com o protocolo estocástico da nota metodológica (DR ativa, RNG global não semeado) — por isso os valores absolutos diferem ligeiramente dos do finding 4 (p.ex. 72% vs 86% no test normal do `+Mirror`). As comparações devem ser lidas **dentro da matriz**, onde os 4 modelos partilham exatamente o mesmo protocolo.
+
 Cada augmentation **arruma sobretudo o seu eixo** (mirror→espelhado, dropout→cones em falta), e **juntá-las é super-aditivo nos cones em falta (48 %, acima dos 30/28 individuais)** — sem custo no *baseline* (até sobe). O `--cone-dropout-augment` remove 0–15 % dos cones físicos a cada *reset*, mantendo a *centerline* intacta. **Ressalva:** nem o `+Ambos` salva o regime catastrófico (≥30 % removido) — a política é reativa, sem memória; o caminho aí seria dar-lhe memória (*LSTM* / *frame-stacking*).
 
 ---
@@ -427,13 +429,4 @@ Em paralelo, explorámos a integração com o **PacSim** (simulador 3D ROS 2 da 
 
 ## 👥 Grupo 1
 
-| Nº       | Nome                                | Email                        |
-|----------|-------------------------------------|------------------------------|
-| PG60390  | Luís Miguel Pereira Silva           | pg60390@alunos.uminho.pt     |
-| PG59908  | Pedro Miguel S. A. Urbano dos Reis  | pg59908@alunos.uminho.pt     |
-
----
-
-## 📜 Licença
-
-Trabalho de cariz estritamente académico. Universidade do Minho, Escola de Engenharia, Departamento de Informática.
+| Nº       | Nome                       

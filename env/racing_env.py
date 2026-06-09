@@ -7,11 +7,14 @@ Merge de ambas as versões:
   - Reward refinado (MEU) — progresso x2, alignment, dead-band smoothness,
     lateral linear/quadrática, stagnation checkpoint
   - Track loader YAML (MEU) — pistas reais de competição FS
-  - Orange cones na observação (MEU) — obs_dim 27
+  - Orange cones na observação (MEU) — obs_dim 24
   - 6-dim ego state (MEU) — inclui ay
   - effective_hw dinâmico (MEU) — track_width variável por pista
 
-Observação (27 dims com orange cones, 21 sem):
+O agente vê APENAS o seu estado e os cones (sem centerline nem distâncias
+às fronteiras): o planeamento global tem de emergir do comportamento reativo.
+
+Observação (24 dims com orange cones, 18 sem — flag use_orange_cones):
     [0]     vx         - velocidade longitudinal normalizada
     [1]     vy         - velocidade lateral normalizada
     [2]     omega      - yaw rate normalizado
@@ -21,9 +24,6 @@ Observação (27 dims com orange cones, 21 sem):
     [6:12]  blue_cones - 3 cones azuis mais próximos (x,y) no ref. do carro
     [12:18] yellow_cones - 3 cones amarelos mais próximos (x,y)
     [18:24] orange_cones - 3 cones laranja (se use_orange_cones)
-    [-3]    dist_left  - distância à fronteira esquerda normalizada
-    [-2]    dist_right - distância à fronteira direita normalizada
-    [-1]    heading_err - erro de heading normalizado
 
 Ação (2 dims contínuas):
     [0] steering_cmd  in [-1, 1]
@@ -142,7 +142,6 @@ class FSRacingEnv(gym.Env):
             print("[INFO] A usar track generator procedural")
 
         self.use_orange_cones = use_orange_cones
-        # self.obs_dim = 27 if use_orange_cones else 21
         self.obs_dim = 24 if use_orange_cones else 18
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
         self.observation_space = spaces.Box(low=-2.0, high=2.0, shape=(self.obs_dim,), dtype=np.float32)
@@ -380,13 +379,8 @@ class FSRacingEnv(gym.Env):
                 yellow_obs.flatten() / self.cone_sensor.max_range,
             ]).astype(np.float32)
 
-        """effective_hw = self._get_effective_hw()
-        boundary = self.boundary_sensor.get_boundary_info(
-            self.car.x, self.car.y, self.car.theta,
-            td['centerline'], td['tangents'], td['normals'], effective_hw)
-
-        return np.clip(np.concatenate([ego, cone_obs, boundary]), -2.0, 2.0).astype(np.float32)"""
-        # Removida a "batota" do boundary_sensor. O agente agora só vê o ego e os cones.
+        # Nota: o agente NÃO recebe informação de boundary/centerline (seria
+        # "batota" face à perceção real) — só o ego state e os cones visíveis.
         return np.clip(np.concatenate([ego, cone_obs]), -2.0, 2.0).astype(np.float32)
 
     # ─── Active cones — persistent knockdowns (AR) ───────────────────────

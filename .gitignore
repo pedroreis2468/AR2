@@ -22,3 +22,6 @@ build/
 *.synctex.gz
 *.fls
 *.fdb_latexmk
+
+# Checkpoints intermédios de treino (pesados; manter best/ + final_model.zip)
+runs/**/checkpoints/

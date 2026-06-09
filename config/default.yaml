@@ -1,12 +1,16 @@
 # =============================================================================
-# Formula Student RL - Configuração por defeito
+# Formula Student RL - Referência de parâmetros
 # =============================================================================
+# NOTA: este ficheiro é DOCUMENTAÇÃO de referência — não é carregado pelo
+# código. Os defaults reais vivem em train.py (argparse), env/racing_env.py
+# e env/car_model.py. Os valores abaixo refletem a configuração usada nos
+# resultados reportados (relatório/notebook).
 
 # --- Ambiente ---
 environment:
   dt: 0.02                    # passo de simulação (s)
   action_repeat: 2            # sub-steps por decisão RL
-  max_episode_steps: 5000     # máximo de steps por episódio
+  max_episode_steps: 5000     # default do env (train.py usa 1500 no treino)
   randomize_track: true       # gerar nova pista a cada episódio
   domain_randomization: true  # variar parâmetros do veículo
 
@@ -62,9 +66,11 @@ sac:
   lr_alpha: 3.0e-4            # learning rate do coef. de entropia
   gamma: 0.99                 # fator de desconto
   tau: 0.005                  # taxa de soft update (Polyak)
-  buffer_size: 1000000        # tamanho do replay buffer
+  buffer_size: 500000         # tamanho do replay buffer (train.py default)
   batch_size: 256             # tamanho do batch
-  learning_starts: 5000       # steps antes de começar a aprender
+  learning_starts: 1000       # steps antes de começar a aprender (train.py default)
+  target_entropy: -0.5        # evita colapso prematuro da exploração (vs default -2)
+  clip_reward: 50.0           # clip da reward normalizada (VecNormalize)
 
 # --- PPO (baseline) ---
 ppo:
@@ -80,8 +86,8 @@ ppo:
 
 # --- Treino ---
 training:
-  total_steps: 500000         # steps de treino (SAC custom)
-  total_steps_sb3: 1000000    # steps de treino (SB3)
+  total_steps: 500000         # default train.py; baselines reportados: SAC 3M / PPO 6M
+  max_episode_steps: 1500     # máximo de steps por episódio no treino (train.py default)
   n_envs: 4                   # ambientes paralelos (SB3)
   eval_freq: 10000            # frequência de avaliação
   n_eval_episodes: 10         # episódios de avaliação
