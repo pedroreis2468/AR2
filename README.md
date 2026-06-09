@@ -429,4 +429,13 @@ Em paralelo, explorámos a integração com o **PacSim** (simulador 3D ROS 2 da 
 
 ## 👥 Grupo 1
 
-| Nº       | Nome                       
+| Nº       | Nome                                | Email                        |
+|----------|-------------------------------------|------------------------------|
+| PG60390  | Luís Miguel Pereira Silva           | pg60390@alunos.uminho.pt     |
+| PG59908  | Pedro Miguel S. A. Urbano dos Reis  | pg59908@alunos.uminho.pt     |
+
+---
+
+## 📜 Licença
+
+Trabalho de cariz estritamente académico. Universidade do Minho, Escola de Engenharia, Departamento de Informática.
