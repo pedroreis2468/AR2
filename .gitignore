@@ -26,4 +26,4 @@ build/
 *.fdb_latexmk
 
 # Checkpoints intermédios de treino (pesados; manter best/ + final_model.zip)
-runs/**/chec
+runs/**/checkpoints/
