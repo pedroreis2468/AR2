@@ -16,7 +16,8 @@ build/
 *.swo
 *~
 
-# LaTeX auxiliares
+# LaTeX (só os PDFs vão para o repo)
+*.tex
 *.aux
 *.out
 *.toc
