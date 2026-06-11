@@ -1,4 +1,5 @@
 __pycache__/
+.pytest_cache/
 *.pyc
 *.pyo
 venv/
@@ -16,7 +17,6 @@ build/
 *~
 
 # LaTeX auxiliares
-*.tex
 *.aux
 *.out
 *.toc
@@ -25,4 +25,4 @@ build/
 *.fdb_latexmk
 
 # Checkpoints intermédios de treino (pesados; manter best/ + final_model.zip)
-runs/**/checkpoints/
+runs/**/chec
