@@ -16,6 +16,7 @@ build/
 *~
 
 # LaTeX auxiliares
+*.tex
 *.aux
 *.out
 *.toc
