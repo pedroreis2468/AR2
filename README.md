@@ -216,9 +216,9 @@ AR2/
 ├── agent/                    # Implementação custom (SAC, redes, buffer)
 ├── config/                   # default.yaml — parâmetros base
 ├── docs/                     # report.pdf, planeamento.pdf, apresentação, pacsim_setup.md
-│   ├── report.pdf/.tex       # ← RELATÓRIO FINAL (LNCS)
+│   ├── report.pdf/.tex       # Relatório final
 │   └── planeamento.tex/.pdf  # Relatório de planeamento
-├── notebooks/                # ← NOTEBOOK DE AVALIAÇÃO
+├── notebooks/                # Notebook de auxilio para avaliação
 │   └── overview.ipynb        # Resultados + avaliação ao vivo (executado)
 ├── env/                      # Ambiente de simulação Gymnasium
 │   ├── racing_env.py         # FSRacingEnv (ambiente principal)
