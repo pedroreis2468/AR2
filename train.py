@@ -392,7 +392,7 @@ def main():
     env_group.add_argument('--no-terminate-on-cone', action='store_true',
                            help='Não terminar episódio imediatamente ao bater num cone')
     env_group.add_argument('--legacy-obs', action='store_true',
-                           help='Treinar modelo com observação 21 dims (ignorar cones laranjas)')
+                           help='Treinar modelo com observação 18 dims (ignorar cones laranjas)')
 
     # --- Hyperparameters ---
     hyper_group = parser.add_argument_group('Hyperparameters')
