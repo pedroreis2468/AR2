@@ -5,6 +5,7 @@
 ![Gymnasium](https://img.shields.io/badge/Gymnasium-0.29+-green)
 ![SB3](https://img.shields.io/badge/Stable--Baselines3-2.1+-purple)
 ![Algorithms](https://img.shields.io/badge/Algorithms-SAC%20%7C%20PPO-orange)
+![Grade](https://img.shields.io/badge/Grade-19.5%2F20-success)
 ![License](https://img.shields.io/badge/License-Academic-lightgrey)
 
 > **Aprendizagem por Reforço** · Mestrado em Inteligência Artificial · Universidade do Minho · 2025/26
